@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+*.local
+
+# 著作権のある音源・プライベート写真はリポジトリに含めない
+assets/
+public/demo/
+out/

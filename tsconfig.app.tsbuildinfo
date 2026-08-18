@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/ImportPanel.tsx","./src/components/SettingsPanel.tsx","./src/components/Timeline.tsx","./src/engine/analyze.worker.ts","./src/engine/audio.ts","./src/engine/beatDetect.ts","./src/engine/exporter.ts","./src/engine/fft.ts","./src/engine/renderer.ts","./src/engine/segments.ts","./src/engine/types.ts"],"version":"5.9.3"}
