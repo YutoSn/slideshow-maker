@@ -4,7 +4,13 @@ import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
 import type { BeatAnalysis } from './engine/beatDetect';
-import { analysisToJson, exportVideo } from './engine/exporter';
+import {
+  analysisToJson,
+  estimateSizeMb,
+  exportVideo,
+  QUALITY_PRESETS,
+  type QualityPreset,
+} from './engine/exporter';
 import { renderFrame } from './engine/renderer';
 import { buildSegments, resizeSegment } from './engine/segments';
 import {
@@ -17,6 +23,7 @@ import {
 
 const CANVAS_WIDTH = 1280;
 const CANVAS_HEIGHT = 720;
+const AUDIO_BITRATE = 128_000;
 
 /** ビート格子を BPM だけ差し替えて作り直す（手動補正用）。 */
 function rebuildWithBpm(analysis: BeatAnalysis, bpm: number): BeatAnalysis {
@@ -44,6 +51,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [quality, setQuality] = useState<QualityPreset>('standard');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -181,10 +189,13 @@ export default function App() {
     setExportProgress(0);
     setError(null);
     try {
+      const preset = QUALITY_PRESETS[quality];
       const blob = await exportVideo(renderContext, audioFile, {
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
+        width: preset.width,
+        height: preset.height,
         fps: 30,
+        videoBitsPerSecond: preset.videoBitsPerSecond,
+        audioBitsPerSecond: AUDIO_BITRATE,
         onProgress: setExportProgress,
         signal: controller.signal,
       });
@@ -200,7 +211,7 @@ export default function App() {
       setExportProgress(null);
       exportAbort.current = null;
     }
-  }, [renderContext, audioFile]);
+  }, [renderContext, audioFile, quality]);
 
   const selected = segments.find((s) => s.id === selectedId) ?? null;
   const ready = analysis !== null && photos.length > 0 && segments.length > 0;
@@ -285,6 +296,26 @@ export default function App() {
                 {formatTime(currentTime)} / {formatTime(analysis?.duration ?? 0)}
               </span>
               <div className="transport__spacer" />
+              <select
+                value={quality}
+                onChange={(e) => setQuality(e.target.value as QualityPreset)}
+                disabled={exportProgress !== null}
+                className="transport__quality"
+                aria-label="書き出し画質"
+              >
+                {(Object.keys(QUALITY_PRESETS) as QualityPreset[]).map((key) => (
+                  <option key={key} value={key}>
+                    {QUALITY_PRESETS[key].label}
+                    {analysis
+                      ? ` — 約 ${estimateSizeMb(
+                          analysis.duration,
+                          QUALITY_PRESETS[key].videoBitsPerSecond,
+                          AUDIO_BITRATE,
+                        ).toFixed(0)}MB`
+                      : ''}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="primary"

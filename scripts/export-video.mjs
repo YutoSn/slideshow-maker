@@ -29,6 +29,12 @@ await page.waitForSelector('.segments .segment', { timeout: 120000 });
 
 console.log('meta:', await page.textContent('.panel__head .muted'));
 
+const quality = process.env.QUALITY;
+if (quality) {
+  await page.selectOption('.transport__quality', quality);
+  console.log('quality:', quality);
+}
+
 const downloadPromise = page.waitForEvent('download', { timeout: 15 * 60 * 1000 });
 await page.click('button.primary');
 console.log('recording started (realtime)…');

@@ -6,8 +6,31 @@ export interface ExportOptions {
   width: number;
   height: number;
   fps: number;
+  /** 映像のビットレート（bps）。ファイルサイズはおおむねこれで決まる。 */
+  videoBitsPerSecond: number;
+  audioBitsPerSecond: number;
   onProgress: (ratio: number) => void;
   signal: AbortSignal;
+}
+
+export type QualityPreset = 'high' | 'standard' | 'light';
+
+export const QUALITY_PRESETS: Record<
+  QualityPreset,
+  { label: string; width: number; height: number; videoBitsPerSecond: number }
+> = {
+  high: { label: '高画質（720p）', width: 1280, height: 720, videoBitsPerSecond: 4_000_000 },
+  standard: { label: '標準（720p）', width: 1280, height: 720, videoBitsPerSecond: 1_500_000 },
+  light: { label: '軽量（540p）', width: 960, height: 540, videoBitsPerSecond: 600_000 },
+};
+
+/** 書き出し後のおおよそのファイルサイズ（MB）。 */
+export function estimateSizeMb(
+  durationSeconds: number,
+  videoBitsPerSecond: number,
+  audioBitsPerSecond: number,
+): number {
+  return ((videoBitsPerSecond + audioBitsPerSecond) * durationSeconds) / 8 / 1e6;
 }
 
 /** ブラウザが実際に書き出せる形式を選ぶ。 */
@@ -33,7 +56,8 @@ export async function exportVideo(
   audioFile: File,
   options: ExportOptions,
 ): Promise<Blob> {
-  const { width, height, fps, onProgress, signal } = options;
+  const { width, height, fps, videoBitsPerSecond, audioBitsPerSecond, onProgress, signal } =
+    options;
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -57,7 +81,11 @@ export async function exportVideo(
   for (const track of destination.stream.getAudioTracks()) stream.addTrack(track);
 
   const mimeType = pickMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const recorder = new MediaRecorder(stream, {
+    ...(mimeType ? { mimeType } : {}),
+    videoBitsPerSecond,
+    audioBitsPerSecond,
+  });
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (event) => {
     if (event.data.size > 0) chunks.push(event.data);
