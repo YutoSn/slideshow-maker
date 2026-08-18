@@ -398,6 +398,7 @@ export default function App() {
               segments={segments}
               photos={photoMap}
               currentTime={currentTime}
+              playing={playing}
               selectedId={selectedId}
               onSeek={seek}
               onSelect={setSelectedId}

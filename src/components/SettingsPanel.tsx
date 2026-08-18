@@ -1,3 +1,4 @@
+import BpmField from './BpmField';
 import type { BeatAnalysis } from '../engine/beatDetect';
 import type { ProjectSettings, Segment, TransitionKind } from '../engine/types';
 
@@ -118,24 +119,7 @@ export default function SettingsPanel({
         <span>写真の順番をシャッフルする</span>
       </label>
 
-      {analysis && (
-        <label className="field">
-          <span>
-            BPM を手で直す<b>{analysis.bpm.toFixed(1)}</b>
-          </span>
-          <input
-            type="number"
-            min={40}
-            max={220}
-            step={0.1}
-            value={Number(analysis.bpm.toFixed(1))}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (value >= 40 && value <= 220) onBpmOverride(value);
-            }}
-          />
-        </label>
-      )}
+      {analysis && <BpmField bpm={analysis.bpm} onChange={onBpmOverride} />}
 
       <div className="selected">
         <h3>選択中のカット</h3>
