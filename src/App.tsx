@@ -123,27 +123,41 @@ export default function App() {
     [segments, photoMap, analysis, settings],
   );
 
-  // 再生位置に合わせて毎フレーム描き直す。停止中も一度だけ描く。
+  // 再生中の描画ループ。React の状態更新は毎フレームだと重いので、
+  // 描画は ref を見て回し、UI 向けの時刻更新だけ間引く。
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !renderContext) return;
+    if (!canvas || !renderContext || !playing) return;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
     let handle = 0;
+    let lastPublished = 0;
+
     const loop = () => {
       const audio = audioRef.current;
-      const time = audio ? audio.currentTime : currentTime;
+      if (!audio) return;
+      const time = audio.currentTime;
       renderFrame(ctx, time, renderContext);
-      if (audio && !audio.paused) {
+
+      // タイムラインの再描画は 10 回/秒あれば十分
+      if (time - lastPublished > 0.1 || time < lastPublished) {
+        lastPublished = time;
         setCurrentTime(time);
-        handle = requestAnimationFrame(loop);
       }
+      handle = requestAnimationFrame(loop);
     };
 
-    renderFrame(ctx, currentTime, renderContext);
-    if (playing) handle = requestAnimationFrame(loop);
+    handle = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(handle);
+  }, [renderContext, playing]);
+
+  // 停止中は、シークや設定変更のたびに 1 枚だけ描き直す。
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !renderContext || playing) return;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (ctx) renderFrame(ctx, currentTime, renderContext);
   }, [renderContext, playing, currentTime]);
 
   const seek = useCallback((time: number) => {
@@ -332,7 +346,11 @@ export default function App() {
           ref={audioRef}
           src={audioUrl}
           onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
+          onPause={(e) => {
+            setPlaying(false);
+            // 間引いていたぶんのずれを、停止時に正確な位置へ合わせる
+            setCurrentTime(e.currentTarget.currentTime);
+          }}
           onEnded={() => setPlaying(false)}
           onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)}
         />

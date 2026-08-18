@@ -7,3 +7,6 @@ dist
 assets/
 public/demo/
 out/
+
+# TypeScript のビルド情報
+*.tsbuildinfo

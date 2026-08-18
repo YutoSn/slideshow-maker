@@ -1,5 +1,6 @@
 import type { BeatAnalysis } from './beatDetect';
 import { renderFrame, type RenderContext } from './renderer';
+import { fixWebmDuration } from './webmDuration';
 
 export interface ExportOptions {
   width: number;
@@ -99,7 +100,9 @@ export async function exportVideo(
   tick();
 
   try {
-    return await finished;
+    const recorded = await finished;
+    // MediaRecorder は総再生時間を書かないので、ここで補ってから返す
+    return await fixWebmDuration(recorded, audio.currentTime || duration);
   } finally {
     cleanup();
   }

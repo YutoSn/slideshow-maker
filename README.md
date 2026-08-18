@@ -64,6 +64,11 @@ canvas に毎フレーム描画します。写真は縦横比を保ったまま�
 `canvas.captureStream()` と音声を 1 本の MediaStream にまとめ、`MediaRecorder` で録画します。
 実時間でしか録れないため、書き出しには曲の長さぶんの時間がかかります。
 
+`MediaRecorder` の出力する WebM には総再生時間（Duration）が書かれておらず、
+そのままではプレイヤーで長さが分からずシークできません。
+`src/engine/webmDuration.ts` で EBML を解析し、`Segment > Info` に Duration を
+差し込んでから保存しています。
+
 ## 開発用スクリプト
 
 ```bash
@@ -71,6 +76,7 @@ node scripts/analyze-check.mjs [音源パス]   # ビート検出だけを実ブ
 node scripts/e2e-check.mjs                  # 素材投入→解析→描画までの通し確認
 node scripts/export-video.mjs               # 書き出しまで含めた通し確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
+node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再生時間を確認
 ```
 
 いずれも `npm run dev` を起動した状態で実行してください。
