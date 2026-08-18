@@ -45,3 +45,15 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   transition: 'mixed',
   shuffle: false,
 };
+
+/**
+ * カットごとの手編集。ビート格子から組み直しても消えないよう、
+ * 生成されたセグメントとは別に持つ。
+ */
+export interface SegmentOverride {
+  /** 割り当てた写真（プールから当てはめたもの） */
+  photoId?: string;
+  transition?: TransitionKind;
+  /** 尺（拍数） */
+  beats?: number;
+}

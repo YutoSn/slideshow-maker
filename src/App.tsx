@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ImportPanel from './components/ImportPanel';
+import PhotoPool from './components/PhotoPool';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
@@ -12,12 +12,13 @@ import {
   type QualityPreset,
 } from './engine/exporter';
 import { renderFrame } from './engine/renderer';
-import { buildSegments, resizeSegment } from './engine/segments';
+import { applyOverrides, buildSegments } from './engine/segments';
 import {
   DEFAULT_SETTINGS,
   type Photo,
   type ProjectSettings,
   type Segment,
+  type SegmentOverride,
   type TransitionKind,
 } from './engine/types';
 
@@ -46,7 +47,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<ProjectSettings>(DEFAULT_SETTINGS);
   const [segments, setSegments] = useState<Segment[]>([]);
-  const [manualSegments, setManualSegments] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, SegmentOverride>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -99,7 +100,6 @@ export default function App() {
         const seen = new Set(current.map((p) => p.id));
         return [...current, ...next.filter((p) => !seen.has(p.id))];
       });
-      setManualSegments(false);
     });
   }, []);
 
@@ -110,7 +110,6 @@ export default function App() {
     try {
       const buffer = await decodeAudioFile(file);
       setAnalysis(await analyzeInWorker(buffer));
-      setManualSegments(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '音源を解析できませんでした');
       setAnalysis(null);
@@ -119,12 +118,17 @@ export default function App() {
     }
   }, []);
 
-  // 素材か設定が変わったらセグメントを組み直す。
-  // 個別に手を入れたあとは、手動の調整を上書きしない。
+  // 素材か設定が変わったら組み直し、その上にカット単位の手編集を重ねる。
+  // こうすると「1 枚あたりの拍数」を変えても割り当てが消えない。
   useEffect(() => {
-    if (!analysis || photos.length === 0 || manualSegments) return;
-    setSegments(buildSegments(photos, analysis, settings));
-  }, [analysis, photos, settings, manualSegments]);
+    if (!analysis || photos.length === 0) {
+      setSegments([]);
+      return;
+    }
+    const base = buildSegments(photos, analysis, settings);
+    const available = new Set(photos.map((p) => p.id));
+    setSegments(applyOverrides(base, overrides, analysis, available));
+  }, [analysis, photos, settings, overrides]);
 
   const renderContext = useMemo(
     () => (analysis ? { segments, photos: photoMap, analysis, settings } : null),
@@ -167,6 +171,25 @@ export default function App() {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (ctx) renderFrame(ctx, currentTime, renderContext);
   }, [renderContext, playing, currentTime]);
+
+  const patchOverride = useCallback((segmentId: string, patch: SegmentOverride) => {
+    setOverrides((current) => ({ ...current, [segmentId]: { ...current[segmentId], ...patch } }));
+  }, []);
+
+  /** 写真をカットに当てはめる。クリック割り当てでは次のカットへ自動で進む。 */
+  const assignPhoto = useCallback(
+    (segmentId: string, photoId: string, advance: boolean) => {
+      patchOverride(segmentId, { photoId });
+      if (!advance) return;
+      setSegments((current) => {
+        const index = current.findIndex((s) => s.id === segmentId);
+        const next = current[index + 1];
+        if (next) setSelectedId(next.id);
+        return current;
+      });
+    },
+    [patchOverride],
+  );
 
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
@@ -214,6 +237,10 @@ export default function App() {
   }, [renderContext, audioFile, quality]);
 
   const selected = segments.find((s) => s.id === selectedId) ?? null;
+  const usedPhotoIds = useMemo(
+    () => new Set(segments.map((s) => s.photoId)),
+    [segments],
+  );
   const ready = analysis !== null && photos.length > 0 && segments.length > 0;
 
   return (
@@ -234,15 +261,19 @@ export default function App() {
 
       <div className="app__body">
         <div className="app__side">
-          <ImportPanel
+          <PhotoPool
             photos={photos}
             audioName={audioFile?.name ?? null}
             analyzing={analyzing}
+            usedPhotoIds={usedPhotoIds}
+            hasSelection={selectedId !== null}
+            onAssign={(photoId) => {
+              if (selectedId) assignPhoto(selectedId, photoId, true);
+            }}
             onPhotos={addPhotos}
             onAudio={(file) => void loadAudio(file)}
             onRemovePhoto={(id) => {
               setPhotos((current) => current.filter((p) => p.id !== id));
-              setManualSegments(false);
             }}
           />
 
@@ -250,25 +281,28 @@ export default function App() {
             settings={settings}
             analysis={analysis}
             selected={selected}
-            onChange={(patch) => {
-              setSettings((current) => ({ ...current, ...patch }));
-              setManualSegments(false);
-            }}
-            onBpmOverride={(bpm) => {
-              setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current));
-              setManualSegments(false);
-            }}
+            onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
+            onBpmOverride={(bpm) =>
+              setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
+            }
             onResizeSelected={(delta) => {
-              if (!analysis || !selectedId) return;
-              setSegments((current) => resizeSegment(current, analysis, selectedId, delta));
-              setManualSegments(true);
+              if (!selected) return;
+              patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) });
             }}
             onTransitionForSelected={(kind: TransitionKind) => {
-              setSegments((current) =>
-                current.map((s) => (s.id === selectedId ? { ...s, transition: kind } : s)),
-              );
-              setManualSegments(true);
+              if (!selected) return;
+              patchOverride(selected.id, { transition: kind });
             }}
+            onClearOverride={() => {
+              if (!selected) return;
+              setOverrides((current) => {
+                const next = { ...current };
+                delete next[selected.id];
+                return next;
+              });
+            }}
+            hasOverrides={Object.keys(overrides).length > 0}
+            onClearAllOverrides={() => setOverrides({})}
           />
         </div>
 
@@ -367,6 +401,7 @@ export default function App() {
               selectedId={selectedId}
               onSeek={seek}
               onSelect={setSelectedId}
+              onDropPhoto={(segmentId, photoId) => assignPhoto(segmentId, photoId, false)}
             />
           )}
         </main>

@@ -1,5 +1,11 @@
 import type { BeatAnalysis } from './beatDetect';
-import type { Photo, ProjectSettings, Segment, TransitionKind } from './types';
+import type {
+  Photo,
+  ProjectSettings,
+  Segment,
+  SegmentOverride,
+  TransitionKind,
+} from './types';
 
 const TRANSITIONS: TransitionKind[] = ['crossfade', 'zoom', 'slide', 'crossfade', 'whip'];
 
@@ -71,38 +77,50 @@ export function buildSegments(
   return segments;
 }
 
-/** 1 つのセグメントの長さを拍単位で変え、以降のセグメントを詰め直す。 */
-export function resizeSegment(
-  segments: Segment[],
+/**
+ * 生成されたセグメント列に手編集を重ねる。
+ * 尺を変えると以降のカットがずれるため、ビート格子の上で順に詰め直す。
+ */
+export function applyOverrides(
+  base: Segment[],
+  overrides: Record<string, SegmentOverride>,
   analysis: BeatAnalysis,
-  segmentId: string,
-  beatsDelta: number,
+  availablePhotoIds: Set<string>,
 ): Segment[] {
-  const index = segments.findIndex((s) => s.id === segmentId);
-  if (index === -1) return segments;
-
-  const target = segments[index];
-  const nextBeats = Math.max(1, target.beats + beatsDelta);
-  if (nextBeats === target.beats) return segments;
+  if (base.length === 0) return base;
 
   const { beats, duration } = analysis;
-  const startIndex = nearestBeatIndex(beats, target.start);
+  let beatIndex = nearestBeatIndex(beats, base[0].start);
+  const result: Segment[] = [];
 
-  const updated = segments.slice(0, index);
-  let beatIndex = startIndex;
+  for (const segment of base) {
+    const override = overrides[segment.id];
+    const beatCount = Math.max(1, Math.round(override?.beats ?? segment.beats));
 
-  for (let i = index; i < segments.length; i++) {
-    const source = segments[i];
-    const beatCount = i === index ? nextBeats : source.beats;
-    const start = beats[beatIndex] ?? duration;
-    if (start >= duration) break;
+    const start = beats[beatIndex];
+    if (start === undefined || start >= duration) break;
     const endIndex = beatIndex + beatCount;
     const end = endIndex < beats.length ? beats[endIndex] : duration;
-    updated.push({ ...source, start, end, beats: beatCount });
+    if (end - start < 0.2) break;
+
+    // 割り当て先の写真が外されていたら、自動割り当てに戻す
+    const assigned =
+      override?.photoId && availablePhotoIds.has(override.photoId)
+        ? override.photoId
+        : segment.photoId;
+
+    result.push({
+      ...segment,
+      photoId: assigned,
+      transition: override?.transition ?? segment.transition,
+      start,
+      end,
+      beats: beatCount,
+    });
     beatIndex = endIndex;
   }
 
-  return updated;
+  return result;
 }
 
 export function nearestBeatIndex(beats: number[], time: number): number {

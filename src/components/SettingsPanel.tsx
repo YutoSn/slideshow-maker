@@ -9,6 +9,10 @@ interface Props {
   onBpmOverride: (bpm: number) => void;
   onResizeSelected: (delta: number) => void;
   onTransitionForSelected: (kind: TransitionKind) => void;
+  /** 選択中のカットの手編集を取り消し、自動割り当てに戻す */
+  onClearOverride: () => void;
+  hasOverrides: boolean;
+  onClearAllOverrides: () => void;
 }
 
 const TRANSITION_LABELS: Record<TransitionKind | 'mixed', string> = {
@@ -27,6 +31,9 @@ export default function SettingsPanel({
   onBpmOverride,
   onResizeSelected,
   onTransitionForSelected,
+  onClearOverride,
+  hasOverrides,
+  onClearAllOverrides,
 }: Props) {
   return (
     <section className="panel">
@@ -155,9 +162,22 @@ export default function SettingsPanel({
                 </option>
               ))}
             </select>
+            <div className="row">
+              <button type="button" onClick={onClearOverride}>
+                このカットを自動に戻す
+              </button>
+            </div>
           </>
         ) : (
           <p className="muted">タイムラインのカットを選ぶと個別に調整できます</p>
+        )}
+
+        {hasOverrides && (
+          <div className="row">
+            <button type="button" onClick={onClearAllOverrides}>
+              手編集をすべて取り消す
+            </button>
+          </div>
         )}
       </div>
     </section>

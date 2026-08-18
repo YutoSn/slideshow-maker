@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BeatAnalysis } from '../engine/beatDetect';
 import { formatTime } from '../engine/audio';
 import type { Photo, Segment } from '../engine/types';
@@ -11,6 +11,8 @@ interface Props {
   selectedId: string | null;
   onSeek: (time: number) => void;
   onSelect: (id: string) => void;
+  /** プールからドラッグしてきた写真を、このカットに割り当てる */
+  onDropPhoto: (segmentId: string, photoId: string) => void;
 }
 
 const HEIGHT = 74;
@@ -23,9 +25,11 @@ export default function Timeline({
   selectedId,
   onSeek,
   onSelect,
+  onDropPhoto,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   // オンセット包絡線とビート格子を描く。曲全体を横幅に収める。
   useEffect(() => {
@@ -108,7 +112,7 @@ export default function Timeline({
       </div>
 
       <div className="segments">
-        {segments.map((segment) => {
+        {segments.map((segment, index) => {
           const photo = photos.get(segment.photoId);
           const width = ((segment.end - segment.start) / duration) * 100;
           const active = currentTime >= segment.start && currentTime < segment.end;
@@ -120,17 +124,36 @@ export default function Timeline({
                 'segment',
                 active ? 'segment--active' : '',
                 selectedId === segment.id ? 'segment--selected' : '',
+                dropTarget === segment.id ? 'segment--drop' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
               style={{ width: `${width}%` }}
-              title={`${photo?.name ?? ''} — ${segment.beats} 拍 / ${segment.transition}`}
+              title={`カット ${index + 1}：${photo?.name ?? '(写真なし)'} — ${segment.beats} 拍`}
               onClick={() => {
                 onSelect(segment.id);
                 onSeek(segment.start);
               }}
+              onDragOver={(e) => {
+                // プールからの写真だけ受け取る
+                if (!e.dataTransfer.types.includes('text/photo-id')) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                setDropTarget(segment.id);
+              }}
+              onDragLeave={() => setDropTarget((current) => (current === segment.id ? null : current))}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDropTarget(null);
+                const photoId = e.dataTransfer.getData('text/photo-id');
+                if (photoId) {
+                  onDropPhoto(segment.id, photoId);
+                  onSelect(segment.id);
+                }
+              }}
             >
               {photo && <img src={photo.url} alt="" />}
+              <span className="segment__index">{index + 1}</span>
             </button>
           );
         })}
