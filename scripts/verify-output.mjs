@@ -60,12 +60,18 @@ const result = await page.evaluate(async () => {
 
 console.log(`duration : ${result.duration}s`);
 console.log(`size     : ${result.width}x${result.height}`);
+console.log(`bytes    : ${(result.bytes / 1e6).toFixed(1)} MB`);
 for (const f of result.frames) {
   writeFileSync(`${shots}/frame-${String(f.t).padStart(3, '0')}s.jpg`, Buffer.from(f.data, 'base64'));
 }
 console.log(`wrote ${result.frames.length} frames to ${shots}`);
 
 await browser.close();
-if (!(result.duration > 290 && result.duration < 296)) throw new Error('総再生時間が不正');
-if (result.width !== 1280 || result.height !== 720) throw new Error('解像度が不正');
+if (!(result.duration > 290 && result.duration < 296)) {
+  throw new Error(`総再生時間が不正: ${result.duration}`);
+}
+// 16:9 で 540p 以上あれば想定どおり（画質プリセットで解像度が変わる）
+if (result.height < 540 || Math.abs(result.width / result.height - 16 / 9) > 0.01) {
+  throw new Error(`解像度が不正: ${result.width}x${result.height}`);
+}
 console.log('OUTPUT OK');
