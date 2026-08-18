@@ -4,6 +4,10 @@
 
 素材はすべてブラウザ内で処理され、サーバーへは送信されません。
 
+**▶ ブラウザですぐ使う: https://yutosn.github.io/slideshow-maker/**
+
+インストール不要です。手元に環境を作る場合は下記の「起動」をご覧ください。
+
 ## できること
 
 - **ビート検出** — 音源を解析して BPM・ビート位置・小節頭を自動で推定
@@ -22,6 +26,9 @@
 インストールから書き出しまで、画面付きで順を追って説明しています。
 
 ### 起動
+
+公開ページ（https://yutosn.github.io/slideshow-maker/ ）をそのまま使えます。
+以下はローカルで動かす場合です。
 
 - **Windows** … `start.bat` をダブルクリック
 - **macOS / Linux** … `./start.sh` を実行
@@ -119,6 +126,15 @@ node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再�
 ```
 
 いずれも `npm run dev` を起動した状態で実行してください。
+
+## 公開（GitHub Pages）
+
+`main` に push すると `.github/workflows/pages.yml` がビルドして
+GitHub Pages へ配信します。
+
+`vite.config.ts` の `base` は `'./'`（相対パス）にしてあります。
+Pages はリポジトリ名のサブパス（`/slideshow-maker/`）で配信されるため、
+絶対パスだとアセットを取得できなくなります。
 
 ## リポジトリに含まれないもの
 
