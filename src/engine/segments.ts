@@ -67,6 +67,7 @@ export function buildSegments(
         settings.transition === 'mixed'
           ? TRANSITIONS[n % TRANSITIONS.length]
           : settings.transition,
+      fit: settings.fit,
       seed: 1000 + n * 7919,
     });
 
@@ -113,6 +114,7 @@ export function applyOverrides(
       ...segment,
       photoId: assigned,
       transition: override?.transition ?? segment.transition,
+      fit: override?.fit ?? segment.fit,
       start,
       end,
       beats: beatCount,

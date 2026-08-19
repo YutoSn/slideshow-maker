@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS,
   type Photo,
   type ProjectSettings,
+  type FitMode,
   type Segment,
   type SegmentOverride,
   type TransitionKind,
@@ -191,6 +192,39 @@ export default function App() {
     [patchOverride],
   );
 
+  /**
+   * カットを掴んで別の位置へ動かす。
+   * 現在の並びを配列にしてから差し替えるので、間のカットは順にずれる。
+   * 動かした時点で全カットの割り当てが確定する（設定を変えても崩れない）。
+   */
+  const reorderCut = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      setSegments((current) => {
+        if (
+          fromIndex < 0 ||
+          toIndex < 0 ||
+          fromIndex >= current.length ||
+          toIndex >= current.length
+        ) {
+          return current;
+        }
+        const order = current.map((s) => s.photoId);
+        const [moved] = order.splice(fromIndex, 1);
+        order.splice(toIndex, 0, moved);
+
+        setOverrides((previous) => {
+          const next = { ...previous };
+          current.forEach((segment, i) => {
+            next[segment.id] = { ...next[segment.id], photoId: order[i] };
+          });
+          return next;
+        });
+        return current;
+      });
+    },
+    [],
+  );
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (audio) audio.currentTime = time;
@@ -292,6 +326,10 @@ export default function App() {
             onTransitionForSelected={(kind: TransitionKind) => {
               if (!selected) return;
               patchOverride(selected.id, { transition: kind });
+            }}
+            onFitForSelected={(fit: FitMode) => {
+              if (!selected) return;
+              patchOverride(selected.id, { fit });
             }}
             onClearOverride={() => {
               if (!selected) return;
@@ -403,6 +441,7 @@ export default function App() {
               onSeek={seek}
               onSelect={setSelectedId}
               onDropPhoto={(segmentId, photoId) => assignPhoto(segmentId, photoId, false)}
+              onReorder={reorderCut}
             />
           )}
         </main>

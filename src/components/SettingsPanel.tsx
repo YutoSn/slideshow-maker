@@ -1,6 +1,12 @@
 import BpmField from './BpmField';
 import type { BeatAnalysis } from '../engine/beatDetect';
-import type { ProjectSettings, Segment, TransitionKind } from '../engine/types';
+import type {
+  BackgroundKind,
+  FitMode,
+  ProjectSettings,
+  Segment,
+  TransitionKind,
+} from '../engine/types';
 
 interface Props {
   settings: ProjectSettings;
@@ -11,10 +17,23 @@ interface Props {
   onResizeSelected: (delta: number) => void;
   onTransitionForSelected: (kind: TransitionKind) => void;
   /** 選択中のカットの手編集を取り消し、自動割り当てに戻す */
+  onFitForSelected: (fit: FitMode) => void;
   onClearOverride: () => void;
   hasOverrides: boolean;
   onClearAllOverrides: () => void;
 }
+
+const FIT_LABELS: Record<FitMode, string> = {
+  cover: '画面いっぱい（はみ出しは切れる）',
+  contain: '全体を収める（余白ができる）',
+};
+
+const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
+  blur: '写真をぼかして敷く',
+  black: '黒',
+  white: '白',
+  color: '好きな色',
+};
 
 const TRANSITION_LABELS: Record<TransitionKind | 'mixed', string> = {
   mixed: 'おまかせ（混在）',
@@ -32,6 +51,7 @@ export default function SettingsPanel({
   onBpmOverride,
   onResizeSelected,
   onTransitionForSelected,
+  onFitForSelected,
   onClearOverride,
   hasOverrides,
   onClearAllOverrides,
@@ -97,6 +117,49 @@ export default function SettingsPanel({
       </label>
 
       <label className="field">
+        <span>写真の収め方（全体）</span>
+        <select
+          value={settings.fit}
+          onChange={(e) => onChange({ fit: e.target.value as FitMode })}
+        >
+          {(Object.keys(FIT_LABELS) as FitMode[]).map((mode) => (
+            <option key={mode} value={mode}>
+              {FIT_LABELS[mode]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {settings.fit === 'contain' && (
+        <>
+          <label className="field">
+            <span>余白の埋め方</span>
+            <select
+              value={settings.background}
+              onChange={(e) => onChange({ background: e.target.value as BackgroundKind })}
+            >
+              {(Object.keys(BACKGROUND_LABELS) as BackgroundKind[]).map((kind) => (
+                <option key={kind} value={kind}>
+                  {BACKGROUND_LABELS[kind]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {settings.background === 'color' && (
+            <label className="field field--inline">
+              <input
+                type="color"
+                value={settings.backgroundColor}
+                onChange={(e) => onChange({ backgroundColor: e.target.value })}
+              />
+              <span>余白の色</span>
+            </label>
+          )}
+        </>
+      )}
+
+      <label className="field">
         <span>トランジション</span>
         <select
           value={settings.transition}
@@ -146,6 +209,20 @@ export default function SettingsPanel({
                 </option>
               ))}
             </select>
+            <label className="field field--stacked">
+              <span>このカットの収め方</span>
+              <select
+                value={selected.fit}
+                onChange={(e) => onFitForSelected(e.target.value as FitMode)}
+              >
+                {(Object.keys(FIT_LABELS) as FitMode[]).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {FIT_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="row">
               <button type="button" onClick={onClearOverride}>
                 このカットを自動に戻す

@@ -209,3 +209,9 @@ select, input[type='number'] {
 .bpm button { padding: 6px 8px; font-size: 12px; flex: none; }
 .row--tight { margin-top: 6px; }
 .row--tight button { font-size: 12px; padding: 5px 8px; }
+
+.field--stacked { margin-top: 10px; margin-bottom: 10px; }
+.field--inline input[type='color'] {
+  width: 34px; height: 26px; padding: 2px; flex: none; cursor: pointer;
+}
+.segment--dragging { opacity: 0.35; }

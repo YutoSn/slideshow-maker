@@ -1,6 +1,6 @@
 import type { BeatAnalysis } from './beatDetect';
 import { seededRandom } from './segments';
-import type { Photo, ProjectSettings, Segment } from './types';
+import type { FitMode, Photo, ProjectSettings, Segment } from './types';
 
 export interface RenderContext {
   segments: Segment[];
@@ -78,13 +78,18 @@ function drawPhoto(
   offsetX: number,
   offsetY: number,
   alpha: number,
+  fit: FitMode,
 ): void {
   if (alpha <= 0.001) return;
 
-  // cover 相当。写真の縦横比を保ったまま画面を覆う
-  const coverScale = Math.max(width / photo.width, height / photo.height) * scale;
-  const drawWidth = photo.width * coverScale;
-  const drawHeight = photo.height * coverScale;
+  // cover は画面を覆い、contain は全体を収める。どちらも縦横比は保つ
+  const base =
+    fit === 'contain'
+      ? Math.min(width / photo.width, height / photo.height)
+      : Math.max(width / photo.width, height / photo.height);
+  const drawn = base * scale;
+  const drawWidth = photo.width * drawn;
+  const drawHeight = photo.height * drawn;
   const slackX = Math.max(0, drawWidth - width) / 2;
   const slackY = Math.max(0, drawHeight - height) / 2;
   const x = (width - drawWidth) / 2 + offsetX * slackX;
@@ -93,6 +98,58 @@ function drawPhoto(
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.drawImage(photo.image, x, y, drawWidth, drawHeight);
+  ctx.restore();
+}
+
+/**
+ * contain で余白ができたときの背景を描く。
+ * 'blur' は同じ写真を画面いっぱいに引き伸ばしてぼかしたもので、
+ * 余白が写真の続きのように見える。
+ */
+function drawBackground(
+  ctx: CanvasRenderingContext2D,
+  photo: Photo | undefined,
+  width: number,
+  height: number,
+  settings: ProjectSettings,
+  alpha: number,
+): void {
+  if (alpha <= 0.001) return;
+
+  if (settings.background === 'blur') {
+    if (!photo) return;
+    const cover = Math.max(width / photo.width, height / photo.height) * 1.12;
+    const drawWidth = photo.width * cover;
+    const drawHeight = photo.height * cover;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // ぼかすと縁が薄くなるので、少し大きめに描いてから外側を隠す
+    ctx.filter = `blur(${Math.round(Math.min(width, height) / 26)}px)`;
+    ctx.drawImage(
+      photo.image,
+      (width - drawWidth) / 2,
+      (height - drawHeight) / 2,
+      drawWidth,
+      drawHeight,
+    );
+    ctx.filter = 'none';
+    // 少し暗く落として、手前の写真との境目を出す
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+    return;
+  }
+
+  const color =
+    settings.background === 'white'
+      ? '#ffffff'
+      : settings.background === 'color'
+        ? settings.backgroundColor
+        : '#000000';
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
 
@@ -132,10 +189,19 @@ export function renderFrame(
     const progress = Math.min(1, Math.max(0, (at - target.start) / span));
     const eased = easeInOut(progress);
     const kb = kenBurnsFor(target.seed, settings.kenBurns);
-    const scale = (kb.fromScale + (kb.toScale - kb.fromScale) * eased) * pulse * extraScale;
+    const grow = (kb.fromScale + (kb.toScale - kb.fromScale) * eased) * pulse * extraScale;
+    // contain は写真全体を見せるのが目的なので、拡大すると切れてしまう。
+    // 代わりに同じ量だけ縮めて、動きを保ちつつ画面内に収め続ける
+    const scale = target.fit === 'contain' ? 1 / grow : grow;
     const offsetX = kb.fromX + (kb.toX - kb.fromX) * eased + shift;
     const offsetY = kb.fromY + (kb.toY - kb.fromY) * eased;
-    drawPhoto(ctx, source, width, height, scale, offsetX, offsetY, alpha);
+    drawPhoto(ctx, source, width, height, scale, offsetX, offsetY, alpha, target.fit);
+  };
+
+  /** 手前の写真を描く前に、そのカットの背景を敷く */
+  const background = (target: Segment, alpha: number) => {
+    if (target.fit !== 'contain') return;
+    drawBackground(ctx, photos.get(target.photoId), width, height, settings, alpha);
   };
 
   const sinceStart = time - segment.start;
@@ -143,12 +209,16 @@ export function renderFrame(
   const isTransitioning = previous && sinceStart < transitionSeconds && transitionSeconds > 0;
 
   if (!isTransitioning) {
+    background(segment, 1);
     draw(segment, time, 1);
     return;
   }
 
   const t = Math.min(1, sinceStart / transitionSeconds);
   const eased = easeInOut(t);
+
+  background(previous, 1);
+  background(segment, eased);
 
   switch (segment.transition) {
     case 'slide':

@@ -15,6 +15,8 @@
 - **Ken Burns / 拍に合わせた拡大** — ゆっくり寄る動きと、拍ごとの軽い拡大
 - **4 種類のトランジション** — クロスフェード / スライド / ズーム / フラッシュ
 - **写真プール** — 写真を貯めておき、任意のカットに当てはめる（クリック割り当て／ドラッグ＆ドロップ、未使用の写真を表示）
+- **並べ替え** — タイムライン上でカットを掴んで別の位置へ移す
+- **収め方の選択** — 画面いっぱい（cover）／全体を収める（contain）を全体・カット単位で切り替え。余白の背景は ぼかし／黒／白／任意の色
 - **タイムライン編集** — 拡大・縮小して、カットごとに尺（拍数）とトランジションを個別調整
 - **BPM の手直し** — 直接入力、±1 / ±0.1、倍・半分の切り替え
 - **動画書き出し** — WebM 動画としてダウンロード（画質 3 段階、目安サイズ表示つき）
@@ -120,6 +122,7 @@ node scripts/e2e-check.mjs                  # 素材投入→解析→描画ま�
 node scripts/export-video.mjs               # 書き出しまで含めた通し確認
 node scripts/e2e-timeline.mjs               # 拍の線とカットの位置ズレを実測
 node scripts/e2e-bpm.mjs                    # BPM の手直しを確認
+node scripts/e2e-fit-reorder.mjs            # 並べ替えと収め方・背景を確認
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
 node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再生時間を確認

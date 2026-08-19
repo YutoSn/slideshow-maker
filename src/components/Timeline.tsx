@@ -14,6 +14,8 @@ interface Props {
   onSelect: (id: string) => void;
   /** プールからドラッグしてきた写真を、このカットに割り当てる */
   onDropPhoto: (segmentId: string, photoId: string) => void;
+  /** カットを掴んで別の位置へ動かす（間のカットは順にずれる） */
+  onReorder: (fromIndex: number, toIndex: number) => void;
 }
 
 const HEIGHT = 74;
@@ -39,11 +41,13 @@ export default function Timeline({
   onSeek,
   onSelect,
   onDropPhoto,
+  onReorder,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
 
   // 拡大時に、どの位置を動かさずに保つか（拡大前の内容座標と、画面上の x）
@@ -290,20 +294,34 @@ export default function Timeline({
                     active ? 'segment--active' : '',
                     selectedId === segment.id ? 'segment--selected' : '',
                     dropTarget === segment.id ? 'segment--drop' : '',
+                    draggingIndex === index ? 'segment--dragging' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
                   style={{ left: `${left}%`, width: `${width}%` }}
-                  title={`カット ${index + 1}：${photo?.name ?? '(写真なし)'} — ${segment.beats} 拍`}
+                  title={`カット ${index + 1}：${photo?.name ?? '(写真なし)'} — ${segment.beats} 拍（ドラッグで並べ替え）`}
+                  draggable
                   onClick={() => {
                     onSelect(segment.id);
                     onSeek(segment.start);
                   }}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/cut-index', String(index));
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingIndex(index);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingIndex(null);
+                    setDropTarget(null);
+                  }}
                   onDragOver={(e) => {
-                    // プールからの写真だけ受け取る
-                    if (!e.dataTransfer.types.includes('text/photo-id')) return;
+                    // プールからの写真か、タイムライン上の別のカットだけ受け取る
+                    const types = e.dataTransfer.types;
+                    const fromPool = types.includes('text/photo-id');
+                    const fromCut = types.includes('text/cut-index');
+                    if (!fromPool && !fromCut) return;
                     e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
+                    e.dataTransfer.dropEffect = fromCut ? 'move' : 'copy';
                     setDropTarget(segment.id);
                   }}
                   onDragLeave={() =>
@@ -312,6 +330,15 @@ export default function Timeline({
                   onDrop={(e) => {
                     e.preventDefault();
                     setDropTarget(null);
+
+                    const cutIndex = e.dataTransfer.getData('text/cut-index');
+                    if (cutIndex !== '') {
+                      const from = Number(cutIndex);
+                      if (Number.isInteger(from) && from !== index) onReorder(from, index);
+                      onSelect(segment.id);
+                      return;
+                    }
+
                     const photoId = e.dataTransfer.getData('text/photo-id');
                     if (photoId) {
                       onDropPhoto(segment.id, photoId);
