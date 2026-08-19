@@ -7,6 +7,34 @@ export interface RenderContext {
   photos: Map<string, Photo>;
   analysis: BeatAnalysis;
   settings: ProjectSettings;
+  /**
+   * 写真ごとの見せる位置。-1〜1 で、はみ出しぶん（slack）に対する割合。
+   * プレビューをドラッグして決める。
+   */
+  focus: Record<string, PhotoFocus>;
+}
+
+export interface PhotoFocus {
+  x: number;
+  y: number;
+}
+
+export const NO_FOCUS: PhotoFocus = { x: 0, y: 0 };
+
+/**
+ * cover 表示ではみ出す量（片側）を返す。
+ * プレビューのドラッグ量を -1〜1 の割合へ換算するのに使う。
+ */
+export function coverSlack(
+  photo: Photo,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const cover = Math.max(width / photo.width, height / photo.height);
+  return {
+    x: Math.max(0, photo.width * cover - width) / 2,
+    y: Math.max(0, photo.height * cover - height) / 2,
+  };
 }
 
 interface KenBurns {
@@ -92,8 +120,11 @@ function drawPhoto(
   const drawHeight = photo.height * drawn;
   const slackX = Math.max(0, drawWidth - width) / 2;
   const slackY = Math.max(0, drawHeight - height) / 2;
-  const x = (width - drawWidth) / 2 + offsetX * slackX;
-  const y = (height - drawHeight) / 2 + offsetY * slackY;
+  // 端を越えると余白が見えてしまうので、はみ出し量の範囲に収める
+  const clampedX = Math.min(1, Math.max(-1, offsetX));
+  const clampedY = Math.min(1, Math.max(-1, offsetY));
+  const x = (width - drawWidth) / 2 + clampedX * slackX;
+  const y = (height - drawHeight) / 2 + clampedY * slackY;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -166,7 +197,7 @@ export function renderFrame(
   time: number,
   render: RenderContext,
 ): void {
-  const { segments, photos, analysis, settings } = render;
+  const { segments, photos, analysis, settings, focus } = render;
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
 
@@ -193,8 +224,9 @@ export function renderFrame(
     // contain は写真全体を見せるのが目的なので、拡大すると切れてしまう。
     // 代わりに同じ量だけ縮めて、動きを保ちつつ画面内に収め続ける
     const scale = target.fit === 'contain' ? 1 / grow : grow;
-    const offsetX = kb.fromX + (kb.toX - kb.fromX) * eased + shift;
-    const offsetY = kb.fromY + (kb.toY - kb.fromY) * eased;
+    const framing = focus[target.photoId] ?? NO_FOCUS;
+    const offsetX = kb.fromX + (kb.toX - kb.fromX) * eased + framing.x + shift;
+    const offsetY = kb.fromY + (kb.toY - kb.fromY) * eased + framing.y;
     drawPhoto(ctx, source, width, height, scale, offsetX, offsetY, alpha, target.fit);
   };
 

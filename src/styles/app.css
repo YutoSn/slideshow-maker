@@ -215,3 +215,13 @@ select, input[type='number'] {
   width: 34px; height: 26px; padding: 2px; flex: none; cursor: pointer;
 }
 .segment--dragging { opacity: 0.35; }
+
+.stage--pannable { cursor: grab; touch-action: none; }
+.stage--pannable:active { cursor: grabbing; }
+.stage__hint { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.tray__item--drop { outline: 2px solid #7dffb0; outline-offset: -2px; }
+.linkish {
+  background: none; border: none; padding: 0; color: var(--accent);
+  text-decoration: underline; font-size: inherit; cursor: pointer;
+}
+.linkish:hover { background: none; }

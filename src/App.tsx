@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import PhotoPool from './components/PhotoPool';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
@@ -11,7 +11,7 @@ import {
   QUALITY_PRESETS,
   type QualityPreset,
 } from './engine/exporter';
-import { renderFrame } from './engine/renderer';
+import { coverSlack, renderFrame, segmentAt, type PhotoFocus } from './engine/renderer';
 import { applyOverrides, buildSegments } from './engine/segments';
 import {
   DEFAULT_SETTINGS,
@@ -49,6 +49,8 @@ export default function App() {
   const [settings, setSettings] = useState<ProjectSettings>(DEFAULT_SETTINGS);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [overrides, setOverrides] = useState<Record<string, SegmentOverride>>({});
+  // 写真ごとの「どこを見せるか」。プレビューのドラッグで決める
+  const [focus, setFocus] = useState<Record<string, PhotoFocus>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -58,6 +60,8 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const exportAbort = useRef<AbortController | null>(null);
+  // ドラッグ終了時に呼びたいが、定義順の都合で ref 経由にする
+  const togglePlayRef = useRef<(() => void) | null>(null);
 
   const photoMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
   const audioUrl = useMemo(() => (audioFile ? URL.createObjectURL(audioFile) : null), [audioFile]);
@@ -132,8 +136,8 @@ export default function App() {
   }, [analysis, photos, settings, overrides]);
 
   const renderContext = useMemo(
-    () => (analysis ? { segments, photos: photoMap, analysis, settings } : null),
-    [segments, photoMap, analysis, settings],
+    () => (analysis ? { segments, photos: photoMap, analysis, settings, focus } : null),
+    [segments, photoMap, analysis, settings, focus],
   );
 
   // 再生中の描画ループ。React の状態更新は毎フレームだと重いので、
@@ -225,6 +229,77 @@ export default function App() {
     [],
   );
 
+  /** いまプレビューに映っているカット（＝ドラッグで動かす対象） */
+  const visibleSegment = segments.length > 0 ? segments[segmentAt(segments, currentTime)] : null;
+  const visiblePhoto = visibleSegment ? photoMap.get(visibleSegment.photoId) : undefined;
+  const canPan = visibleSegment?.fit === 'cover' && visiblePhoto !== undefined;
+
+  const panRef = useRef<{
+    photoId: string;
+    startX: number;
+    startY: number;
+    origin: PhotoFocus;
+    slack: { x: number; y: number };
+    moved: boolean;
+  } | null>(null);
+
+  const beginPan = useCallback(
+    (e: PointerEvent<HTMLCanvasElement>) => {
+      if (!canPan || !visiblePhoto) return;
+      const canvas = e.currentTarget;
+      const rect = canvas.getBoundingClientRect();
+      // 表示サイズと canvas の実ピクセルの比
+      const scale = canvas.width / rect.width;
+      panRef.current = {
+        photoId: visiblePhoto.id,
+        startX: e.clientX * scale,
+        startY: e.clientY * scale,
+        origin: focus[visiblePhoto.id] ?? { x: 0, y: 0 },
+        slack: coverSlack(visiblePhoto, canvas.width, canvas.height),
+        moved: false,
+      };
+      canvas.setPointerCapture(e.pointerId);
+    },
+    [canPan, visiblePhoto, focus],
+  );
+
+  const movePan = useCallback((e: PointerEvent<HTMLCanvasElement>) => {
+    const pan = panRef.current;
+    if (!pan) return;
+    const canvas = e.currentTarget;
+    const scale = canvas.width / canvas.getBoundingClientRect().width;
+    const dx = e.clientX * scale - pan.startX;
+    const dy = e.clientY * scale - pan.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 3) pan.moved = true;
+
+    // 縦横ともはみ出しが無ければ、動かしようがないので何も記録しない
+    if (pan.slack.x === 0 && pan.slack.y === 0) return;
+
+    // はみ出し量が 0 の向き（写真と画面の比が同じ）は動かせない
+    const nextX = pan.slack.x > 0 ? pan.origin.x + dx / pan.slack.x : pan.origin.x;
+    const nextY = pan.slack.y > 0 ? pan.origin.y + dy / pan.slack.y : pan.origin.y;
+    setFocus((current) => ({
+      ...current,
+      [pan.photoId]: {
+        x: Math.min(1, Math.max(-1, nextX)),
+        y: Math.min(1, Math.max(-1, nextY)),
+      },
+    }));
+  }, []);
+
+  const endPan = useCallback(
+    (e: PointerEvent<HTMLCanvasElement>) => {
+      const pan = panRef.current;
+      panRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      // 動かしていなければ、ただのクリックとして再生／一時停止に使う
+      if (pan && !pan.moved) togglePlayRef.current?.();
+    },
+    [],
+  );
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (audio) audio.currentTime = time;
@@ -237,6 +312,8 @@ export default function App() {
     if (audio.paused) void audio.play();
     else audio.pause();
   }, []);
+
+  togglePlayRef.current = togglePlay;
 
   const handleExport = useCallback(async () => {
     if (!renderContext || !audioFile) return;
@@ -304,6 +381,13 @@ export default function App() {
             onAssign={(photoId) => {
               if (selectedId) assignPhoto(selectedId, photoId, true);
             }}
+            onDropCut={(cutIndex, photoId) => {
+              const target = segments[cutIndex];
+              if (target) {
+                patchOverride(target.id, { photoId });
+                setSelectedId(target.id);
+              }
+            }}
             onPhotos={addPhotos}
             onAudio={(file) => void loadAudio(file)}
             onRemovePhoto={(id) => {
@@ -350,11 +434,49 @@ export default function App() {
               ref={canvasRef}
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
-              className="stage"
-              onClick={togglePlay}
+              className={`stage${canPan ? ' stage--pannable' : ''}`}
+              onPointerDown={beginPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+              onClick={(e) => {
+                // ドラッグできない状態のときは、クリックで再生／一時停止
+                if (!canPan) togglePlay();
+                else e.preventDefault();
+              }}
             />
             {!ready && (
               <p className="stage__empty">写真と音源を読み込むとプレビューが始まります</p>
+            )}
+
+            {ready && visiblePhoto && (
+              <p className="stage__hint">
+                {canPan ? (
+                  <>
+                    プレビューをドラッグすると、この写真のどこを見せるか決められます
+                    {focus[visiblePhoto.id] && (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="linkish"
+                          onClick={() =>
+                            setFocus((current) => {
+                              const next = { ...current };
+                              delete next[visiblePhoto.id];
+                              return next;
+                            })
+                          }
+                        >
+                          位置をリセット
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  '「全体を収める」では写真全体が映るため、位置の調整はありません'
+                )}
+              </p>
             )}
 
             <div className="transport">
@@ -442,6 +564,7 @@ export default function App() {
               onSelect={setSelectedId}
               onDropPhoto={(segmentId, photoId) => assignPhoto(segmentId, photoId, false)}
               onReorder={reorderCut}
+              transitionSeconds={(settings.transitionBeats * 60) / analysis.bpm}
             />
           )}
         </main>

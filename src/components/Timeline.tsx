@@ -16,6 +16,8 @@ interface Props {
   onDropPhoto: (segmentId: string, photoId: string) => void;
   /** カットを掴んで別の位置へ動かす（間のカットは順にずれる） */
   onReorder: (fromIndex: number, toIndex: number) => void;
+  /** トランジションの長さ（秒）。カットを選んだときの表示位置に使う */
+  transitionSeconds: number;
 }
 
 const HEIGHT = 74;
@@ -42,6 +44,7 @@ export default function Timeline({
   onSelect,
   onDropPhoto,
   onReorder,
+  transitionSeconds,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -303,7 +306,11 @@ export default function Timeline({
                   draggable
                   onClick={() => {
                     onSelect(segment.id);
-                    onSeek(segment.start);
+                    // カットの先頭はクロスフェードの開始点で、まだ前の写真が
+                    // 不透明のまま。切り替わりきった位置へ送って、選んだ写真を映す
+                    const settled = segment.start + transitionSeconds;
+                    const middle = (segment.start + segment.end) / 2;
+                    onSeek(Math.min(Math.max(settled, segment.start), Math.max(middle, segment.start)));
                   }}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/cut-index', String(index));

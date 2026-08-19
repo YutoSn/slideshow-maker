@@ -13,6 +13,8 @@ interface Props {
   onAudio: (file: File) => void;
   onRemovePhoto: (id: string) => void;
   onAssign: (photoId: string) => void;
+  /** タイムラインからカットをドラッグしてきたとき、その写真に差し替える */
+  onDropCut: (cutIndex: number, photoId: string) => void;
 }
 
 export default function PhotoPool({
@@ -25,11 +27,13 @@ export default function PhotoPool({
   onAudio,
   onRemovePhoto,
   onAssign,
+  onDropCut,
 }: Props) {
   const photoInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
+  const [cutOver, setCutOver] = useState<string | null>(null);
 
   const visible = showUnusedOnly ? photos.filter((p) => !usedPhotoIds.has(p.id)) : photos;
   const unusedCount = photos.filter((p) => !usedPhotoIds.has(p.id)).length;
@@ -103,7 +107,7 @@ export default function PhotoPool({
             {hasSelection
               ? '写真をクリックすると、選択中のカットに割り当てます'
               : 'タイムラインでカットを選ぶと、クリックで割り当てられます'}
-            。ドラッグしてカットに落としても割り当てられます。
+            。写真とカットは、どちらの向きにドラッグしても差し替えられます。
           </p>
 
           {unusedCount > 0 && (
@@ -123,11 +127,37 @@ export default function PhotoPool({
               return (
                 <li
                   key={photo.id}
-                  className={`tray__item${used ? '' : ' tray__item--unused'}`}
+                  className={[
+                    'tray__item',
+                    used ? '' : 'tray__item--unused',
+                    cutOver === photo.id ? 'tray__item--drop' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/photo-id', photo.id);
                     e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onDragOver={(e) => {
+                    // タイムラインから運ばれてきたカットだけ受け取る
+                    if (!e.dataTransfer.types.includes('text/cut-index')) return;
+                    e.preventDefault();
+                    // カット側は effectAllowed = 'move' で始まる。
+                    // 許可されていない dropEffect を指定するとドロップが拒否される
+                    e.dataTransfer.dropEffect = 'move';
+                    setCutOver(photo.id);
+                  }}
+                  onDragLeave={() =>
+                    setCutOver((current) => (current === photo.id ? null : current))
+                  }
+                  onDrop={(e) => {
+                    const raw = e.dataTransfer.getData('text/cut-index');
+                    if (raw === '') return;
+                    e.preventDefault();
+                    setCutOver(null);
+                    const index = Number(raw);
+                    if (Number.isInteger(index)) onDropCut(index, photo.id);
                   }}
                 >
                   <button
