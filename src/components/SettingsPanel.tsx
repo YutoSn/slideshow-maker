@@ -1,5 +1,3 @@
-import BpmField from './BpmField';
-import type { BeatAnalysis } from '../engine/beatDetect';
 import type {
   BackgroundKind,
   FitMode,
@@ -10,10 +8,8 @@ import type {
 
 interface Props {
   settings: ProjectSettings;
-  analysis: BeatAnalysis | null;
   selected: Segment | null;
   onChange: (patch: Partial<ProjectSettings>) => void;
-  onBpmOverride: (bpm: number) => void;
   onResizeSelected: (delta: number) => void;
   onTransitionForSelected: (kind: TransitionKind) => void;
   /** 選択中のカットの手編集を取り消し、自動割り当てに戻す */
@@ -45,10 +41,8 @@ const TRANSITION_LABELS: Record<TransitionKind | 'mixed', string> = {
 
 export default function SettingsPanel({
   settings,
-  analysis,
   selected,
   onChange,
-  onBpmOverride,
   onResizeSelected,
   onTransitionForSelected,
   onFitForSelected,
@@ -182,7 +176,6 @@ export default function SettingsPanel({
         <span>写真の順番をシャッフルする</span>
       </label>
 
-      {analysis && <BpmField bpm={analysis.bpm} onChange={onBpmOverride} />}
 
       <div className="selected">
         <h3>選択中のカット</h3>

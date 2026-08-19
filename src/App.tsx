@@ -607,12 +607,8 @@ export default function App() {
 
           <SettingsPanel
             settings={settings}
-            analysis={analysis}
             selected={selected}
             onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-            onBpmOverride={(bpm) =>
-              setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
-            }
             onResizeSelected={(delta) => {
               if (!selected) return;
               patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) });
@@ -640,6 +636,7 @@ export default function App() {
 
         <main className="app__main">
           <section className="panel panel--stage">
+            <div className="stage__frame">
             <canvas
               ref={canvasRef}
               width={CANVAS_WIDTH}
@@ -655,6 +652,7 @@ export default function App() {
                 else e.preventDefault();
               }}
             />
+            </div>
             {!ready && (
               <p className="stage__empty">写真と音源を読み込むとプレビューが始まります</p>
             )}
@@ -775,6 +773,9 @@ export default function App() {
               onDropPhoto={(segmentId, photoId) => assignPhoto(segmentId, photoId, false)}
               onReorder={reorderCut}
               transitionSeconds={(settings.transitionBeats * 60) / analysis.bpm}
+              onBpmOverride={(bpm) =>
+                setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
+              }
             />
           )}
         </main>

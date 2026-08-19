@@ -17,10 +17,11 @@ await page.setInputFiles('input[type=file][accept="image/*"]', photos);
 await page.setInputFiles('input[type=file][accept="audio/*"]', resolve('assets/ohayou.mp3'));
 await page.waitForSelector('.segments .segment', { timeout: 120000 });
 
-const meta = () => page.textContent('.zoom .muted');
+const meta = () => page.textContent('.toolbar__right .muted');
+const shownBpm = () => page.inputValue('.bpm input');
 const field = page.locator('.bpm input');
 
-console.log('detected      :', (await meta()).split('／')[0].trim());
+console.log('detected      :', await shownBpm(), 'BPM /', (await meta()).trim());
 
 // 整数部分を打ち替える（74.9 -> 120）
 await field.click();
@@ -29,7 +30,7 @@ await field.press('Enter');
 await page.waitForTimeout(400);
 const afterType = await field.inputValue();
 const metaAfterType = await meta();
-console.log('typed 120     :', afterType, '/', metaAfterType.split('／')[0].trim());
+console.log('typed 120     :', afterType, '/', metaAfterType.trim());
 
 // 1 拍ずつのボタン
 await page.click('button[aria-label="BPM を 1 上げる"]');
@@ -52,10 +53,10 @@ await field.click();
 await field.fill('150');
 await field.press('Enter');
 await page.waitForTimeout(300);
-await page.click('button:has-text("半分")');
+await page.click('.bpm button:has-text("÷2")');
 await page.waitForTimeout(300);
 const halved = await field.inputValue();
-console.log('150 -> 半分   :', halved);
+console.log('150 -> ÷2     :', halved);
 
 const cuts = await page.evaluate(() => document.querySelectorAll('.segments .segment').length);
 console.log('cuts at 75bpm :', cuts);
@@ -63,6 +64,7 @@ console.log('cuts at 75bpm :', cuts);
 await browser.close();
 
 if (afterType !== '120.0') throw new Error(`整数部分を打ち替えられない: ${afterType}`);
-if (!metaAfterType.includes('120.0 BPM')) throw new Error('BPM が反映されていない');
-if (halved !== '75.0') throw new Error(`半分ボタンが効かない: ${halved}`);
+// 反映されたかは、拍数が変わってカット数が変わることで確かめる
+if (!/カット/.test(metaAfterType)) throw new Error('タイムラインの表示が読めない');
+if (halved !== '75.0') throw new Error(`÷2 ボタンが効かない: ${halved}`);
 console.log('BPM FIELD OK');

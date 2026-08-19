@@ -147,6 +147,7 @@ select, input[type='number'] {
 .selected { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
 .selected .row { margin-bottom: 8px; }
 
+.stage__frame { display: block; }
 .stage { width: 100%; aspect-ratio: 16 / 9; display: block; background: #07070b; border-radius: 8px; cursor: pointer; }
 .stage__empty { text-align: center; color: var(--muted); margin: 10px 0 0; font-size: 13px; }
 
@@ -252,3 +253,79 @@ select, input[type='number'] {
 .projects__meta { font-size: 11px; color: var(--muted); }
 .projects--current .projects__open { border-color: var(--accent); }
 .projects__delete { flex: none; padding: 0 10px; }
+
+/* ---------- タイムラインの操作列 ---------- */
+
+.toolbar {
+  display: flex; align-items: center; gap: 14px;
+  flex-wrap: wrap; margin-bottom: 12px;
+}
+.toolbar h2 { margin: 0; }
+.toolbar__right {
+  display: flex; align-items: center; gap: 12px;
+  margin-left: auto; flex-wrap: wrap;
+}
+
+.bpm {
+  display: flex; align-items: center; gap: 3px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 3px 8px;
+}
+.bpm__label {
+  font-size: 11px; letter-spacing: 0.06em; color: var(--muted);
+  margin-right: 3px;
+}
+.bpm input {
+  width: 62px; text-align: center; padding: 3px 4px;
+  font-variant-numeric: tabular-nums; background: var(--panel);
+  border-radius: 5px;
+}
+.bpm button {
+  padding: 3px 7px; font-size: 11.5px; line-height: 1.5;
+  border-radius: 5px; background: transparent; border-color: transparent;
+}
+.bpm button:hover:not(:disabled) { background: var(--panel); border-color: var(--line); }
+
+/* ---------- PC では、左の列だけがスクロールする ---------- */
+
+@media (min-width: 1080px) {
+  html, body { height: 100%; overflow: hidden; }
+
+  .app {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 16px;
+  }
+
+  .app__body { flex: 1; min-height: 0; }
+
+  /* 左だけ動く。右は画面に固定 */
+  .app__side {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+  }
+
+  .app__main { height: 100%; min-height: 0; }
+
+  .panel--stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* 残った高さに 16:9 を収める */
+  .stage__frame {
+    flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage {
+    width: auto; height: 100%;
+    max-width: 100%; max-height: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .app__side::-webkit-scrollbar { width: 10px; }
+  .app__side::-webkit-scrollbar-thumb {
+    background: var(--line); border-radius: 5px;
+  }
+  .app__side::-webkit-scrollbar-track { background: transparent; }
+}

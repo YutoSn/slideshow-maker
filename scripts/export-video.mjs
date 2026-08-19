@@ -27,7 +27,7 @@ await page.setInputFiles('input[type=file][accept="image/*"]', photos);
 await page.setInputFiles('input[type=file][accept="audio/*"]', resolve('assets/ohayou.mp3'));
 await page.waitForSelector('.segments .segment', { timeout: 120000 });
 
-console.log('meta:', await page.textContent('.panel__head .muted'));
+console.log('meta:', await page.textContent('.toolbar__right .muted'));
 
 const quality = process.env.QUALITY;
 if (quality) {

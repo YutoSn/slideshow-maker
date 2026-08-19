@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BeatAnalysis } from '../engine/beatDetect';
 import { formatTime } from '../engine/audio';
+import BpmField from './BpmField';
 import type { Photo, Segment } from '../engine/types';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   onReorder: (fromIndex: number, toIndex: number) => void;
   /** トランジションの長さ（秒）。カットを選んだときの表示位置に使う */
   transitionSeconds: number;
+  onBpmOverride: (bpm: number) => void;
 }
 
 const HEIGHT = 74;
@@ -45,6 +47,7 @@ export default function Timeline({
   onDropPhoto,
   onReorder,
   transitionSeconds,
+  onBpmOverride,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -52,9 +55,13 @@ export default function Timeline({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  zoomRef.current = zoom;
 
   // 拡大時に、どの位置を動かさずに保つか（拡大前の内容座標と、画面上の x）
   const anchorRef = useRef<{ ratio: number; offsetX: number } | null>(null);
+  // 手で動かした直後の時刻。しばらくは再生位置の追尾をしない
+  const userScrolledAt = useRef(0);
 
   const duration = analysis.duration || 1;
 
@@ -162,12 +169,19 @@ export default function Timeline({
     if (!scroll || !inner) return;
 
     const onScroll = () => draw();
+    const markManual = () => {
+      userScrolledAt.current = Date.now();
+    };
+    scroll.addEventListener('pointerdown', markManual);
+    scroll.addEventListener('keydown', markManual);
     scroll.addEventListener('scroll', onScroll, { passive: true });
     const observer = new ResizeObserver(draw);
     observer.observe(scroll);
     observer.observe(inner);
     return () => {
       scroll.removeEventListener('scroll', onScroll);
+      scroll.removeEventListener('pointerdown', markManual);
+      scroll.removeEventListener('keydown', markManual);
       observer.disconnect();
     };
   }, [draw, zoom]);
@@ -188,26 +202,30 @@ export default function Timeline({
     (next: number, offsetX?: number) => {
       const scroll = scrollRef.current;
       const inner = innerRef.current;
-      const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
-      if (!scroll || !inner) {
-        setZoom(clamped);
-        return;
-      }
-      const contentWidth = inner.clientWidth;
-      const x = offsetX ?? scroll.clientWidth / 2;
-      const ratio =
-        offsetX === undefined
-          ? currentTime / duration
-          : (scroll.scrollLeft + x) / contentWidth;
-      anchorRef.current = { ratio, offsetX: x };
-      setZoom(clamped);
+
+      setZoom((current) => {
+        const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+        // 拡大率が変わらないときに基準位置を残すと、あとで別の理由で
+        // 再描画されたときにその古い位置へ飛んでしまう
+        if (clamped === current || !scroll || !inner) return clamped;
+
+        const x = offsetX ?? scroll.clientWidth / 2;
+        const ratio =
+          offsetX === undefined
+            ? currentTime / duration
+            : (scroll.scrollLeft + x) / inner.clientWidth;
+        anchorRef.current = { ratio, offsetX: x };
+        return clamped;
+      });
     },
     [currentTime, duration],
   );
 
-  // 再生中は再生位置を画面内に保つ
+  // 再生中は再生位置を画面内に保つ。
+  // ただし手で動かした直後は、追尾が邪魔になるので少し待つ。
   useEffect(() => {
     if (!playing || zoom === 1) return;
+    if (Date.now() - userScrolledAt.current < 3000) return;
     const scroll = scrollRef.current;
     const inner = innerRef.current;
     if (!scroll || !inner) return;
@@ -218,6 +236,37 @@ export default function Timeline({
       scroll.scrollLeft = (currentTime / duration) * inner.clientWidth - view / 2;
     }
   }, [currentTime, playing, zoom, duration]);
+
+  /**
+   * ホイール操作。
+   * React はホイールを passive で登録するため onWheel では preventDefault が
+   * 効かず、Ctrl + ホイールでブラウザ側も拡大してしまう。
+   * ここは自前で passive: false で登録する。
+   */
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = scroll.getBoundingClientRect();
+        applyZoom(zoomRef.current * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - rect.left);
+        return;
+      }
+      // 拡大中は、縦ホイールでも横に動かせるようにする
+      const overflow = scroll.scrollWidth - scroll.clientWidth;
+      if (overflow <= 0) return;
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (delta === 0) return;
+      e.preventDefault();
+      userScrolledAt.current = Date.now();
+      scroll.scrollLeft = Math.min(overflow, Math.max(0, scroll.scrollLeft + delta));
+    };
+
+    scroll.addEventListener('wheel', onWheel, { passive: false });
+    return () => scroll.removeEventListener('wheel', onWheel);
+  }, [applyZoom]);
 
   const seekFromEvent = (clientX: number) => {
     const scroll = scrollRef.current;
@@ -230,11 +279,14 @@ export default function Timeline({
 
   return (
     <section className="panel">
-      <div className="panel__head">
+      <div className="toolbar">
         <h2>3. タイムライン</h2>
-        <div className="zoom">
+
+        <BpmField bpm={analysis.bpm} onChange={onBpmOverride} />
+
+        <div className="toolbar__right">
           <span className="muted">
-            {analysis.bpm.toFixed(1)} BPM ／ {segments.length} カット ／ {formatTime(duration)}
+            {segments.length} カット ／ {formatTime(duration)}
           </span>
           <div className="zoom__controls">
             <button
@@ -266,13 +318,6 @@ export default function Timeline({
       <div
         ref={scrollRef}
         className={`timeline${zoom > 1 ? ' timeline--zoomed' : ''}`}
-        onWheel={(e) => {
-          // Ctrl + ホイールで、カーソル位置を基準に拡大縮小
-          if (!e.ctrlKey && !e.metaKey) return;
-          e.preventDefault();
-          const rect = e.currentTarget.getBoundingClientRect();
-          applyZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - rect.left);
-        }}
       >
         <div ref={innerRef} className="timeline__inner" style={{ width: `${zoom * 100}%` }}>
           <canvas

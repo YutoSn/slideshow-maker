@@ -93,9 +93,10 @@ await shot('pool', '.app__side .panel:nth-child(2)', [
 await page.click('.segments .segment:nth-child(6)');
 await page.waitForTimeout(300);
 await shot('timeline', '.app__main .panel:nth-child(2)', [
-  { selector: '.timeline', label: '1' },
-  { selector: '.segments', label: '2' },
-  { selector: '.zoom__controls', label: '3', at: 'top-right', dx: 10 },
+  { selector: '.timeline', label: '2' },
+  { selector: '.segments', label: '3' },
+  { selector: '.bpm', label: '1' },
+  { selector: '.zoom__controls', label: '4', at: 'top-right', dx: 10 },
 ]);
 
 // --- プレビューのドラッグ -----------------------------------------
@@ -140,6 +141,7 @@ await page.selectOption('.field:has(span:text-is("写真の収め方（全体）
 await page.waitForTimeout(400);
 
 // --- 見せ方の設定 -------------------------------------------------
+await page.evaluate(() => { document.querySelector('.app__side').scrollTop = 0; });
 await shot('settings', '.app__side .panel:nth-child(3)');
 
 // --- プロジェクト -------------------------------------------------

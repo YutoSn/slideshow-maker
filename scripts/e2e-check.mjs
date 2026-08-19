@@ -30,7 +30,7 @@ await page.waitForTimeout(500);
 const summary = await page.evaluate(() => ({
   segments: document.querySelectorAll('.segments .segment').length,
   status: document.querySelector('.status')?.textContent?.trim(),
-  meta: document.querySelector('.panel__head .muted')?.textContent?.trim(),
+  meta: document.querySelector('.toolbar__right .muted')?.textContent?.trim(),
 }));
 console.log('summary:', JSON.stringify(summary));
 

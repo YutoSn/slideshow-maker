@@ -13,7 +13,7 @@ function clamp(value: number): number {
 }
 
 /**
- * BPM の手直し。
+ * BPM の手直し。タイムラインの操作列に置くので、1 行に収まる形にしている。
  *
  * 入力中の値をそのまま確定させると、「120」と打とうとした時点の「1」が
  * 範囲外として弾かれ、整数部分を打ち替えられない。
@@ -39,63 +39,67 @@ export default function BpmField({ bpm, onChange }: Props) {
     }
   };
 
-  const step = (delta: number) => {
+  const set = (value: number) => {
     editing.current = false;
-    const next = clamp(Number((bpm + delta).toFixed(1)));
+    const next = clamp(Number(value.toFixed(1)));
     onChange(next);
     setDraft(next.toFixed(1));
   };
 
   return (
-    <div className="field">
-      <span>
-        BPM を手で直す<b>{bpm.toFixed(1)}</b>
-      </span>
-      <div className="bpm">
-        <button type="button" onClick={() => step(-1)} aria-label="BPM を 1 下げる">
-          −1
-        </button>
-        <button type="button" onClick={() => step(-0.1)} aria-label="BPM を 0.1 下げる">
-          −.1
-        </button>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={draft}
-          aria-label="BPM"
-          onFocus={(e) => {
-            editing.current = true;
-            e.currentTarget.select();
-          }}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            editing.current = false;
-            commit();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.currentTarget.blur();
-            } else if (e.key === 'Escape') {
-              setDraft(bpm.toFixed(1));
-              e.currentTarget.blur();
-            }
-          }}
-        />
-        <button type="button" onClick={() => step(0.1)} aria-label="BPM を 0.1 上げる">
-          +.1
-        </button>
-        <button type="button" onClick={() => step(1)} aria-label="BPM を 1 上げる">
-          +1
-        </button>
-      </div>
-      <div className="row row--tight">
-        <button type="button" onClick={() => step(bpm)} disabled={bpm * 2 > MAX_BPM}>
-          2 倍（{clamp(bpm * 2).toFixed(0)}）
-        </button>
-        <button type="button" onClick={() => step(-bpm / 2)} disabled={bpm / 2 < MIN_BPM}>
-          半分（{clamp(bpm / 2).toFixed(0)}）
-        </button>
-      </div>
+    <div className="bpm" title="曲のテンポ。切り替わりがズレるときはここで直します">
+      <span className="bpm__label">BPM</span>
+      <button type="button" onClick={() => set(bpm - 1)} aria-label="BPM を 1 下げる">
+        −1
+      </button>
+      <button type="button" onClick={() => set(bpm - 0.1)} aria-label="BPM を 0.1 下げる">
+        −
+      </button>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        aria-label="BPM"
+        onFocus={(e) => {
+          editing.current = true;
+          e.currentTarget.select();
+        }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          editing.current = false;
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            setDraft(bpm.toFixed(1));
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      <button type="button" onClick={() => set(bpm + 0.1)} aria-label="BPM を 0.1 上げる">
+        ＋
+      </button>
+      <button type="button" onClick={() => set(bpm + 1)} aria-label="BPM を 1 上げる">
+        +1
+      </button>
+      <button
+        type="button"
+        onClick={() => set(bpm * 2)}
+        disabled={bpm * 2 > MAX_BPM}
+        title="推定が半分になっているとき"
+      >
+        ×2
+      </button>
+      <button
+        type="button"
+        onClick={() => set(bpm / 2)}
+        disabled={bpm / 2 < MIN_BPM}
+        title="推定が倍になっているとき"
+      >
+        ÷2
+      </button>
     </div>
   );
 }
