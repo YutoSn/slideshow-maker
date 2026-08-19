@@ -329,3 +329,25 @@ select, input[type='number'] {
   }
   .app__side::-webkit-scrollbar-track { background: transparent; }
 }
+
+.tray__kind {
+  position: absolute; left: 2px; top: 2px;
+  background: rgba(0, 0, 0, 0.72); color: #fff;
+  font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 3px;
+  pointer-events: none; font-variant-numeric: tabular-nums;
+}
+
+.trim { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.trim__title {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: var(--muted); margin-bottom: 6px;
+}
+.trim__title b { color: var(--text); font-variant-numeric: tabular-nums; }
+.trim__bar {
+  position: relative; height: 8px; border-radius: 4px;
+  background: var(--panel-2); border: 1px solid var(--line); overflow: hidden;
+  margin-bottom: 6px;
+}
+.trim__used { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.75; }
+.trim input[type='range'] { width: 100%; accent-color: var(--accent); }
+.trim .muted { margin-top: 6px; }

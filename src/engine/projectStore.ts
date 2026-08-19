@@ -16,7 +16,7 @@ const PROJECTS = 'projects';
 const META = 'meta';
 const LAST_OPENED = 'lastOpenedId';
 
-export interface StoredPhoto {
+export interface StoredMedia {
   id: string;
   name: string;
   file: File;
@@ -26,7 +26,7 @@ export interface StoredProject {
   id: string;
   name: string;
   updatedAt: number;
-  photos: StoredPhoto[];
+  photos: StoredMedia[];
   audio: File | null;
   analysis: BeatAnalysis | null;
   settings: ProjectSettings;

@@ -2,19 +2,19 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { BeatAnalysis } from '../engine/beatDetect';
 import { formatTime } from '../engine/audio';
 import BpmField from './BpmField';
-import type { Photo, Segment } from '../engine/types';
+import type { MediaItem, Segment } from '../engine/types';
 
 interface Props {
   analysis: BeatAnalysis;
   segments: Segment[];
-  photos: Map<string, Photo>;
+  photos: Map<string, MediaItem>;
   currentTime: number;
   playing: boolean;
   selectedId: string | null;
   onSeek: (time: number) => void;
   onSelect: (id: string) => void;
   /** プールからドラッグしてきた写真を、このカットに割り当てる */
-  onDropPhoto: (segmentId: string, photoId: string) => void;
+  onDropPhoto: (segmentId: string, mediaId: string) => void;
   /** カットを掴んで別の位置へ動かす（間のカットは順にずれる） */
   onReorder: (fromIndex: number, toIndex: number) => void;
   /** トランジションの長さ（秒）。カットを選んだときの表示位置に使う */
@@ -328,7 +328,7 @@ export default function Timeline({
 
           <div className="segments">
             {segments.map((segment, index) => {
-              const photo = photos.get(segment.photoId);
+              const photo = photos.get(segment.mediaId);
               // 実際の開始時刻で配置する。こうすると上段の拍の線と必ず揃う
               const left = (segment.start / duration) * 100;
               const width = ((segment.end - segment.start) / duration) * 100;
@@ -391,14 +391,14 @@ export default function Timeline({
                       return;
                     }
 
-                    const photoId = e.dataTransfer.getData('text/photo-id');
-                    if (photoId) {
-                      onDropPhoto(segment.id, photoId);
+                    const mediaId = e.dataTransfer.getData('text/photo-id');
+                    if (mediaId) {
+                      onDropPhoto(segment.id, mediaId);
                       onSelect(segment.id);
                     }
                   }}
                 >
-                  {photo && <img src={photo.url} alt="" />}
+                  {photo && <img src={photo.thumbnail} alt="" />}
                   <span className="segment__index">{index + 1}</span>
                 </button>
               );

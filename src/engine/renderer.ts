@@ -1,10 +1,10 @@
 import type { BeatAnalysis } from './beatDetect';
 import { seededRandom } from './segments';
-import type { FitMode, Photo, ProjectSettings, Segment } from './types';
+import type { FitMode, LookFilter, MediaItem, ProjectSettings, Segment } from './types';
 
 export interface RenderContext {
   segments: Segment[];
-  photos: Map<string, Photo>;
+  media: Map<string, MediaItem>;
   analysis: BeatAnalysis;
   settings: ProjectSettings;
   /**
@@ -26,14 +26,14 @@ export const NO_FOCUS: PhotoFocus = { x: 0, y: 0 };
  * プレビューのドラッグ量を -1〜1 の割合へ換算するのに使う。
  */
 export function coverSlack(
-  photo: Photo,
+  item: MediaItem,
   width: number,
   height: number,
 ): { x: number; y: number } {
-  const cover = Math.max(width / photo.width, height / photo.height);
+  const cover = Math.max(width / item.width, height / item.height);
   return {
-    x: Math.max(0, photo.width * cover - width) / 2,
-    y: Math.max(0, photo.height * cover - height) / 2,
+    x: Math.max(0, item.width * cover - width) / 2,
+    y: Math.max(0, item.height * cover - height) / 2,
   };
 }
 
@@ -99,7 +99,7 @@ function beatPulse(time: number, analysis: BeatAnalysis, amount: number): number
  */
 function drawPhoto(
   ctx: CanvasRenderingContext2D,
-  photo: Photo,
+  item: MediaItem,
   width: number,
   height: number,
   scale: number,
@@ -113,11 +113,11 @@ function drawPhoto(
   // cover は画面を覆い、contain は全体を収める。どちらも縦横比は保つ
   const base =
     fit === 'contain'
-      ? Math.min(width / photo.width, height / photo.height)
-      : Math.max(width / photo.width, height / photo.height);
+      ? Math.min(width / item.width, height / item.height)
+      : Math.max(width / item.width, height / item.height);
   const drawn = base * scale;
-  const drawWidth = photo.width * drawn;
-  const drawHeight = photo.height * drawn;
+  const drawWidth = item.width * drawn;
+  const drawHeight = item.height * drawn;
   const slackX = Math.max(0, drawWidth - width) / 2;
   const slackY = Math.max(0, drawHeight - height) / 2;
   // 端を越えると余白が見えてしまうので、はみ出し量の範囲に収める
@@ -128,7 +128,7 @@ function drawPhoto(
 
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.drawImage(photo.image, x, y, drawWidth, drawHeight);
+  ctx.drawImage(item.element, x, y, drawWidth, drawHeight);
   ctx.restore();
 }
 
@@ -139,7 +139,7 @@ function drawPhoto(
  */
 function drawBackground(
   ctx: CanvasRenderingContext2D,
-  photo: Photo | undefined,
+  item: MediaItem | undefined,
   width: number,
   height: number,
   settings: ProjectSettings,
@@ -148,16 +148,16 @@ function drawBackground(
   if (alpha <= 0.001) return;
 
   if (settings.background === 'blur') {
-    if (!photo) return;
-    const cover = Math.max(width / photo.width, height / photo.height) * 1.12;
-    const drawWidth = photo.width * cover;
-    const drawHeight = photo.height * cover;
+    if (!item) return;
+    const cover = Math.max(width / item.width, height / item.height) * 1.12;
+    const drawWidth = item.width * cover;
+    const drawHeight = item.height * cover;
     ctx.save();
     ctx.globalAlpha = alpha;
     // ぼかすと縁が薄くなるので、少し大きめに描いてから外側を隠す
     ctx.filter = `blur(${Math.round(Math.min(width, height) / 26)}px)`;
     ctx.drawImage(
-      photo.image,
+      item.element,
       (width - drawWidth) / 2,
       (height - drawHeight) / 2,
       drawWidth,
@@ -184,6 +184,64 @@ function drawBackground(
   ctx.restore();
 }
 
+/** 全体の色味。canvas の filter なので、画素を自前で回すより格段に軽い。 */
+const FILTERS: Record<LookFilter, string> = {
+  none: 'none',
+  mono: 'grayscale(1) contrast(1.08)',
+  sepia: 'sepia(0.62) saturate(1.15)',
+  vivid: 'saturate(1.45) contrast(1.06)',
+  warm: 'sepia(0.28) saturate(1.25) hue-rotate(-10deg)',
+  cool: 'saturate(1.1) hue-rotate(14deg) brightness(1.03)',
+};
+
+let vignetteCache: { key: string; gradient: CanvasGradient } | null = null;
+
+/** 四隅を落とす。毎フレーム作り直さないよう、グラデーションは使い回す。 */
+function drawVignette(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  strength: number,
+): void {
+  if (strength <= 0) return;
+  const key = `${width}x${height}:${strength.toFixed(3)}`;
+  if (vignetteCache?.key !== key) {
+    const gradient = ctx.createRadialGradient(
+      width / 2,
+      height / 2,
+      Math.min(width, height) * 0.32,
+      width / 2,
+      height / 2,
+      Math.max(width, height) * 0.72,
+    );
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, `rgba(0,0,0,${strength})`);
+    vignetteCache = { key, gradient };
+  }
+  ctx.save();
+  ctx.fillStyle = vignetteCache.gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+/** 拍のたびに小さく揺らす。決まった向きに動くので画が破綻しない。 */
+function beatShake(
+  time: number,
+  analysis: BeatAnalysis,
+  amount: number,
+  width: number,
+): { x: number; y: number } {
+  if (amount <= 0) return { x: 0, y: 0 };
+  const period = 60 / analysis.bpm;
+  const index = Math.floor((time - analysis.offset) / period);
+  const since = (time - analysis.offset) % period;
+  if (since < 0) return { x: 0, y: 0 };
+  const decay = Math.exp(-since * 14);
+  const random = seededRandom(1013 + index * 7919);
+  const scale = amount * width * 0.03 * decay;
+  return { x: (random() - 0.5) * 2 * scale, y: (random() - 0.5) * 2 * scale };
+}
+
 export function segmentAt(segments: Segment[], time: number): number {
   for (let i = 0; i < segments.length; i++) {
     if (time >= segments[i].start && time < segments[i].end) return i;
@@ -197,7 +255,7 @@ export function renderFrame(
   time: number,
   render: RenderContext,
 ): void {
-  const { segments, photos, analysis, settings, focus } = render;
+  const { segments, media, analysis, settings, focus } = render;
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
 
@@ -207,14 +265,19 @@ export function renderFrame(
 
   const index = segmentAt(segments, time);
   const segment = segments[index];
-  const photo = photos.get(segment.photoId);
-  if (!photo) return;
+  if (!media.get(segment.mediaId)) return;
 
   const pulse = beatPulse(time, analysis, settings.beatPulse);
   const transitionSeconds = (settings.transitionBeats * 60) / analysis.bpm;
+  const shake = beatShake(time, analysis, settings.shake, width);
+
+  // 揺れと色味は 1 フレームまとめて適用する。写真ごとにかけるより軽い
+  ctx.save();
+  if (shake.x !== 0 || shake.y !== 0) ctx.translate(shake.x, shake.y);
+  ctx.filter = FILTERS[settings.filter];
 
   const draw = (target: Segment, at: number, alpha: number, shift = 0, extraScale = 1) => {
-    const source = photos.get(target.photoId);
+    const source = media.get(target.mediaId);
     if (!source) return;
     const span = Math.max(0.001, target.end - target.start);
     const progress = Math.min(1, Math.max(0, (at - target.start) / span));
@@ -224,7 +287,7 @@ export function renderFrame(
     // contain は写真全体を見せるのが目的なので、拡大すると切れてしまう。
     // 代わりに同じ量だけ縮めて、動きを保ちつつ画面内に収め続ける
     const scale = target.fit === 'contain' ? 1 / grow : grow;
-    const framing = focus[target.photoId] ?? NO_FOCUS;
+    const framing = focus[target.mediaId] ?? NO_FOCUS;
     const offsetX = kb.fromX + (kb.toX - kb.fromX) * eased + framing.x + shift;
     const offsetY = kb.fromY + (kb.toY - kb.fromY) * eased + framing.y;
     drawPhoto(ctx, source, width, height, scale, offsetX, offsetY, alpha, target.fit);
@@ -233,16 +296,22 @@ export function renderFrame(
   /** 手前の写真を描く前に、そのカットの背景を敷く */
   const background = (target: Segment, alpha: number) => {
     if (target.fit !== 'contain') return;
-    drawBackground(ctx, photos.get(target.photoId), width, height, settings, alpha);
+    drawBackground(ctx, media.get(target.mediaId), width, height, settings, alpha);
   };
 
   const sinceStart = time - segment.start;
   const previous = segments[index - 1];
   const isTransitioning = previous && sinceStart < transitionSeconds && transitionSeconds > 0;
 
+  const finish = () => {
+    ctx.restore();
+    drawVignette(ctx, width, height, settings.vignette);
+  };
+
   if (!isTransitioning) {
     background(segment, 1);
     draw(segment, time, 1);
+    finish();
     return;
   }
 
@@ -257,26 +326,147 @@ export function renderFrame(
       draw(previous, time, 1, -eased * 2.2);
       draw(segment, time, 1, (1 - eased) * 2.2);
       break;
+
+    case 'slideUp':
+      // 縦方向の押し出し。clip でずらして描く
+      drawShifted(ctx, width, height, 0, -eased * height, () => draw(previous, time, 1));
+      drawShifted(ctx, width, height, 0, (1 - eased) * height, () => draw(segment, time, 1));
+      break;
+
     case 'zoom':
       draw(previous, time, 1 - eased, 0, 1 + eased * 0.35);
       draw(segment, time, eased, 0, 1.35 - eased * 0.35);
       break;
+
     case 'whip': {
       // 切り替わりの瞬間に白を差し込んで、拍を強調する
       draw(previous, time, 1 - eased);
       draw(segment, time, eased);
-      const flash = Math.sin(Math.PI * t) * 0.55;
+      flash(ctx, width, height, '255,255,255', Math.sin(Math.PI * t) * 0.55);
+      break;
+    }
+
+    case 'dipBlack': {
+      // 前半で暗転し、後半で明ける
+      if (t < 0.5) draw(previous, time, 1);
+      else draw(segment, time, 1);
+      flash(ctx, width, height, '0,0,0', Math.sin(Math.PI * t));
+      break;
+    }
+
+    case 'wipe': {
+      draw(previous, time, 1);
       ctx.save();
-      ctx.globalAlpha = flash;
+      ctx.beginPath();
+      ctx.rect(0, 0, width * eased, height);
+      ctx.clip();
+      draw(segment, time, 1);
+      ctx.restore();
+      // 境目に細い光の線を入れると、切り替わりが締まる
+      const edge = width * eased;
+      ctx.save();
+      ctx.globalAlpha = 0.5 * Math.sin(Math.PI * t);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(edge - 2, 0, 4, height);
       ctx.restore();
       break;
     }
+
+    case 'circle': {
+      draw(previous, time, 1);
+      const radius = Math.hypot(width, height) / 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(width / 2, height / 2, radius * eased, 0, Math.PI * 2);
+      ctx.clip();
+      draw(segment, time, 1);
+      ctx.restore();
+      break;
+    }
+
+    case 'spin': {
+      // 前の画を回しながら送り、次の画を戻しながら受ける
+      drawRotated(ctx, width, height, eased * 0.5, 1 - eased * 0.4, () =>
+        draw(previous, time, 1 - eased),
+      );
+      drawRotated(ctx, width, height, (eased - 1) * 0.5, 0.6 + eased * 0.4, () =>
+        draw(segment, time, eased),
+      );
+      break;
+    }
+
+    case 'blur': {
+      // ぼかしながら入れ替える。強さは中央で最大
+      const amount = Math.sin(Math.PI * t) * Math.min(width, height) * 0.045;
+      const base = ctx.filter;
+      ctx.filter = `${base === 'none' ? '' : base + ' '}blur(${amount.toFixed(1)}px)`;
+      draw(previous, time, 1 - eased);
+      draw(segment, time, eased);
+      ctx.filter = base;
+      break;
+    }
+
     case 'crossfade':
     default:
       draw(previous, time, 1 - eased);
       draw(segment, time, eased);
       break;
   }
+
+  finish();
+}
+
+/** 画面ぶんだけ平行移動して描く（縦のスライド用）。 */
+function drawShifted(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  dx: number,
+  dy: number,
+  paint: () => void,
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height);
+  ctx.clip();
+  ctx.translate(dx, dy);
+  paint();
+  ctx.restore();
+}
+
+/** 画面中央を軸に回して縮めて描く（スピン用）。 */
+function drawRotated(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  radians: number,
+  scale: number,
+  paint: () => void,
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height);
+  ctx.clip();
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate(radians);
+  ctx.scale(scale, scale);
+  ctx.translate(-width / 2, -height / 2);
+  paint();
+  ctx.restore();
+}
+
+/** 画面全体を一色で覆う（フラッシュ・暗転用）。 */
+function flash(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  rgb: string,
+  alpha: number,
+): void {
+  if (alpha <= 0.001) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, alpha);
+  ctx.fillStyle = `rgb(${rgb})`;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
 }

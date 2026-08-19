@@ -20,7 +20,7 @@ await page.goto('http://127.0.0.1:5173/');
 await page.waitForSelector('.dropzone');
 
 // 写真と音源を投入
-await page.setInputFiles('input[type=file][accept="image/*"]', photos);
+await page.setInputFiles('input[type=file][multiple]', photos);
 await page.setInputFiles('input[type=file][accept="audio/*"]', resolve('assets/ohayou.mp3'));
 
 // 解析完了（タイムラインの描画）を待つ

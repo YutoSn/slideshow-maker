@@ -1,13 +1,38 @@
-export interface Photo {
+export type MediaKind = 'photo' | 'video';
+
+export interface MediaItem {
   id: string;
   name: string;
   url: string;
-  image: HTMLImageElement;
+  kind: MediaKind;
+  /** canvas に描ける実体。写真なら img、動画なら video */
+  element: HTMLImageElement | HTMLVideoElement;
   width: number;
   height: number;
+  /** 動画の長さ（秒）。写真は 0 */
+  duration: number;
+  /** 一覧に出すサムネイル。動画は先頭付近のコマから作る */
+  thumbnail: string;
 }
 
-export type TransitionKind = 'crossfade' | 'slide' | 'zoom' | 'whip';
+export function isVideo(item: MediaItem): item is MediaItem & { element: HTMLVideoElement } {
+  return item.kind === 'video';
+}
+
+export type TransitionKind =
+  | 'crossfade'
+  | 'slide'
+  | 'slideUp'
+  | 'zoom'
+  | 'whip'
+  | 'dipBlack'
+  | 'wipe'
+  | 'circle'
+  | 'spin'
+  | 'blur';
+
+/** 全体にかける色味。canvas の filter で処理するので負荷は軽い。 */
+export type LookFilter = 'none' | 'mono' | 'sepia' | 'vivid' | 'warm' | 'cool';
 
 /**
  * 写真を画面にどう収めるか。
@@ -21,7 +46,7 @@ export type BackgroundKind = 'black' | 'white' | 'blur' | 'color';
 
 export interface Segment {
   id: string;
-  photoId: string;
+  mediaId: string;
   /** 開始時刻（秒）— ビート格子にスナップ済み */
   start: number;
   /** 終了時刻（秒）— ビート格子にスナップ済み */
@@ -31,6 +56,8 @@ export interface Segment {
   transition: TransitionKind;
   /** 画面への収め方 */
   fit: FitMode;
+  /** 動画のとき、クリップのどこから使うか（秒） */
+  videoStart: number;
   /** Ken Burns の演出をセグメントごとに固定するための種 */
   seed: number;
 }
@@ -44,6 +71,12 @@ export interface ProjectSettings {
   beatPulse: number;
   /** Ken Burns の強さ（0 で静止） */
   kenBurns: number;
+  /** 拍に合わせた揺れの強さ（0 で無効） */
+  shake: number;
+  /** 画面の四隅を落とす強さ（0 で無効） */
+  vignette: number;
+  /** 全体の色味 */
+  filter: LookFilter;
   transition: TransitionKind | 'mixed';
   /** 全体の既定の収め方。カットごとに上書きできる */
   fit: FitMode;
@@ -60,6 +93,9 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   transitionBeats: 1,
   beatPulse: 0.035,
   kenBurns: 0.12,
+  shake: 0,
+  vignette: 0.18,
+  filter: 'none',
   transition: 'mixed',
   fit: 'cover',
   background: 'blur',
@@ -73,10 +109,12 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
  */
 export interface SegmentOverride {
   /** 割り当てた写真（プールから当てはめたもの） */
-  photoId?: string;
+  mediaId?: string;
   transition?: TransitionKind;
   /** 尺（拍数） */
   beats?: number;
   /** このカットだけの収め方 */
   fit?: FitMode;
+  /** 動画のとき、クリップのどこから使うか（秒） */
+  videoStart?: number;
 }

@@ -1,6 +1,6 @@
 import type { BeatAnalysis } from './beatDetect';
 import type {
-  Photo,
+  MediaItem,
   ProjectSettings,
   Segment,
   SegmentOverride,
@@ -25,7 +25,7 @@ export function seededRandom(seed: number): () => number {
  * 写真が足りなければ先頭から巡回して曲の最後まで敷き詰める。
  */
 export function buildSegments(
-  photos: Photo[],
+  photos: MediaItem[],
   analysis: BeatAnalysis,
   settings: ProjectSettings,
 ): Segment[] {
@@ -59,7 +59,7 @@ export function buildSegments(
     const photo = photos[order[n % order.length]];
     segments.push({
       id: `seg-${n}`,
-      photoId: photo.id,
+      mediaId: photo.id,
       start,
       end,
       beats: Math.min(beatsPerPhoto, beats.length - 1 - beatIndex),
@@ -68,6 +68,7 @@ export function buildSegments(
           ? TRANSITIONS[n % TRANSITIONS.length]
           : settings.transition,
       fit: settings.fit,
+      videoStart: 0,
       seed: 1000 + n * 7919,
     });
 
@@ -86,7 +87,7 @@ export function applyOverrides(
   base: Segment[],
   overrides: Record<string, SegmentOverride>,
   analysis: BeatAnalysis,
-  availablePhotoIds: Set<string>,
+  availableMediaIds: Set<string>,
 ): Segment[] {
   if (base.length === 0) return base;
 
@@ -106,15 +107,16 @@ export function applyOverrides(
 
     // 割り当て先の写真が外されていたら、自動割り当てに戻す
     const assigned =
-      override?.photoId && availablePhotoIds.has(override.photoId)
-        ? override.photoId
-        : segment.photoId;
+      override?.mediaId && availableMediaIds.has(override.mediaId)
+        ? override.mediaId
+        : segment.mediaId;
 
     result.push({
       ...segment,
-      photoId: assigned,
+      mediaId: assigned,
       transition: override?.transition ?? segment.transition,
       fit: override?.fit ?? segment.fit,
+      videoStart: override?.videoStart ?? segment.videoStart,
       start,
       end,
       beats: beatCount,

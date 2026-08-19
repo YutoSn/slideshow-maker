@@ -1,6 +1,9 @@
+import ClipTrim from './ClipTrim';
 import type {
   BackgroundKind,
   FitMode,
+  LookFilter,
+  MediaItem,
   ProjectSettings,
   Segment,
   TransitionKind,
@@ -14,6 +17,10 @@ interface Props {
   onTransitionForSelected: (kind: TransitionKind) => void;
   /** 選択中のカットの手編集を取り消し、自動割り当てに戻す */
   onFitForSelected: (fit: FitMode) => void;
+  /** 選択中のカットが使っている素材（動画なら開始位置を出す） */
+  selectedMedia: MediaItem | null;
+  beatSeconds: number;
+  onVideoStartForSelected: (videoStart: number) => void;
   onClearOverride: () => void;
   hasOverrides: boolean;
   onClearAllOverrides: () => void;
@@ -34,9 +41,37 @@ const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
 const TRANSITION_LABELS: Record<TransitionKind | 'mixed', string> = {
   mixed: 'おまかせ（混在）',
   crossfade: 'クロスフェード',
-  slide: 'スライド',
+  slide: 'スライド（横）',
+  slideUp: 'スライド（縦）',
   zoom: 'ズーム',
-  whip: 'フラッシュ',
+  whip: 'フラッシュ（白）',
+  dipBlack: '暗転',
+  wipe: 'ワイプ',
+  circle: 'サークル',
+  spin: 'スピン',
+  blur: 'ブラー',
+};
+
+const TRANSITION_KINDS: TransitionKind[] = [
+  'crossfade',
+  'slide',
+  'slideUp',
+  'zoom',
+  'whip',
+  'dipBlack',
+  'wipe',
+  'circle',
+  'spin',
+  'blur',
+];
+
+const FILTER_LABELS: Record<LookFilter, string> = {
+  none: 'そのまま',
+  mono: 'モノクロ',
+  sepia: 'セピア',
+  vivid: '鮮やか',
+  warm: '暖かめ',
+  cool: '涼しめ',
 };
 
 export default function SettingsPanel({
@@ -46,6 +81,9 @@ export default function SettingsPanel({
   onResizeSelected,
   onTransitionForSelected,
   onFitForSelected,
+  selectedMedia,
+  beatSeconds,
+  onVideoStartForSelected,
   onClearOverride,
   hasOverrides,
   onClearAllOverrides,
@@ -108,6 +146,48 @@ export default function SettingsPanel({
           value={settings.beatPulse}
           onChange={(e) => onChange({ beatPulse: Number(e.target.value) })}
         />
+      </label>
+
+      <label className="field">
+        <span>
+          拍で揺らす<b>{Math.round(settings.shake * 100)}%</b>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={settings.shake}
+          onChange={(e) => onChange({ shake: Number(e.target.value) })}
+        />
+      </label>
+
+      <label className="field">
+        <span>
+          周辺を暗くする<b>{Math.round(settings.vignette * 100)}%</b>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={0.6}
+          step={0.02}
+          value={settings.vignette}
+          onChange={(e) => onChange({ vignette: Number(e.target.value) })}
+        />
+      </label>
+
+      <label className="field">
+        <span>色味</span>
+        <select
+          value={settings.filter}
+          onChange={(e) => onChange({ filter: e.target.value as LookFilter })}
+        >
+          {(Object.keys(FILTER_LABELS) as LookFilter[]).map((kind) => (
+            <option key={kind} value={kind}>
+              {FILTER_LABELS[kind]}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label className="field">
@@ -196,7 +276,7 @@ export default function SettingsPanel({
               value={selected.transition}
               onChange={(e) => onTransitionForSelected(e.target.value as TransitionKind)}
             >
-              {(['crossfade', 'slide', 'zoom', 'whip'] as TransitionKind[]).map((kind) => (
+              {TRANSITION_KINDS.map((kind) => (
                 <option key={kind} value={kind}>
                   {TRANSITION_LABELS[kind]}
                 </option>
@@ -215,6 +295,15 @@ export default function SettingsPanel({
                 ))}
               </select>
             </label>
+
+            {selectedMedia?.kind === 'video' && (
+              <ClipTrim
+                segment={selected}
+                item={selectedMedia}
+                beatSeconds={beatSeconds}
+                onChange={onVideoStartForSelected}
+              />
+            )}
 
             <div className="row">
               <button type="button" onClick={onClearOverride}>

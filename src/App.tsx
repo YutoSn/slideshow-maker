@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import PhotoPool from './components/PhotoPool';
+import MediaPool from './components/MediaPool';
 import ProjectPanel from './components/ProjectPanel';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
@@ -26,10 +26,12 @@ import {
   type QualityPreset,
 } from './engine/exporter';
 import { coverSlack, renderFrame, segmentAt, type PhotoFocus } from './engine/renderer';
+import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
+import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
 import {
   DEFAULT_SETTINGS,
-  type Photo,
+  type MediaItem,
   type ProjectSettings,
   type FitMode,
   type Segment,
@@ -55,7 +57,7 @@ function rebuildWithBpm(analysis: BeatAnalysis, bpm: number): BeatAnalysis {
 }
 
 export default function App() {
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photos, setPhotos] = useState<MediaItem[]>([]);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<BeatAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -74,7 +76,7 @@ export default function App() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(null);
   const [restored, setRestored] = useState<string | null>(null);
-  // 写真の File 本体は保存にしか使わないので、描画用の Photo とは別に持つ
+  // 写真の File 本体は保存にしか使わないので、描画用の MediaItem とは別に持つ
   const photoFiles = useRef<Map<string, File>>(new Map());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,7 +90,7 @@ export default function App() {
   // ドラッグ終了時に呼びたいが、定義順の都合で ref 経由にする
   const togglePlayRef = useRef<(() => void) | null>(null);
 
-  const photoMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
+  const mediaMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
   const audioUrl = useMemo(() => (audioFile ? URL.createObjectURL(audioFile) : null), [audioFile]);
 
   useEffect(() => () => {
@@ -96,38 +98,23 @@ export default function App() {
   }, [audioUrl]);
 
   const addPhotos = useCallback((files: FileList) => {
-    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    const loaded = images.map(
-      (file) =>
-        new Promise<Photo | null>((resolve) => {
-          const url = URL.createObjectURL(file);
-          const image = new Image();
-          image.onload = () => {
-            const id = `${file.name}-${file.size}-${file.lastModified}`;
-            photoFiles.current.set(id, file);
-            resolve({
-              id,
-              name: file.name,
-              url,
-              image,
-              width: image.naturalWidth,
-              height: image.naturalHeight,
-            });
-          };
-          // HEIC などブラウザが表示できない形式は静かに読み飛ばす
-          image.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve(null);
-          };
-          image.src = url;
-        }),
-    );
+    const chosen = Array.from(files).filter(isMediaFile);
+    if (chosen.length === 0) return;
 
-    void Promise.all(loaded).then((results) => {
-      const next = results.filter((p): p is Photo => p !== null);
+    void Promise.all(
+      chosen.map((file) =>
+        loadMedia(file).then((item) => {
+          if (item) photoFiles.current.set(mediaIdFor(file), file);
+          return item;
+        }),
+      ),
+    ).then((results) => {
+      const next = results.filter((p): p is MediaItem => p !== null);
       const skipped = results.length - next.length;
       if (skipped > 0) {
-        setError(`${skipped} 件はブラウザが対応しない画像形式のため読み飛ばしました（HEIC など）`);
+        setError(
+          `${skipped} 件はブラウザが対応しない形式のため読み飛ばしました（HEIC など）`,
+        );
       }
       setPhotos((current) => {
         const seen = new Set(current.map((p) => p.id));
@@ -163,9 +150,13 @@ export default function App() {
     setSegments(applyOverrides(base, overrides, analysis, available));
   }, [analysis, photos, settings, overrides]);
 
+  const transitionSeconds = analysis
+    ? (settings.transitionBeats * 60) / analysis.bpm
+    : 0;
+
   const renderContext = useMemo(
-    () => (analysis ? { segments, photos: photoMap, analysis, settings, focus } : null),
-    [segments, photoMap, analysis, settings, focus],
+    () => (analysis ? { segments, media: mediaMap, analysis, settings, focus } : null),
+    [segments, mediaMap, analysis, settings, focus],
   );
 
   // 再生中の描画ループ。React の状態更新は毎フレームだと重いので、
@@ -183,6 +174,7 @@ export default function App() {
       const audio = audioRef.current;
       if (!audio) return;
       const time = audio.currentTime;
+      syncVideos(renderContext, time, true, transitionSeconds);
       renderFrame(ctx, time, renderContext);
 
       // タイムラインの再描画は 10 回/秒あれば十分
@@ -202,8 +194,19 @@ export default function App() {
     const canvas = canvasRef.current;
     if (!canvas || !renderContext || playing) return;
     const ctx = canvas.getContext('2d', { alpha: false });
-    if (ctx) renderFrame(ctx, currentTime, renderContext);
-  }, [renderContext, playing, currentTime]);
+    if (!ctx) return;
+    syncVideos(renderContext, currentTime, false, transitionSeconds);
+    renderFrame(ctx, currentTime, renderContext);
+
+    // 動画はシークが終わってから描かないと、前のコマのままになる
+    const pending = renderContext.segments[segmentAt(renderContext.segments, currentTime)];
+    const item = pending ? renderContext.media.get(pending.mediaId) : undefined;
+    if (item?.kind !== 'video') return;
+    const video = item.element as HTMLVideoElement;
+    const redraw = () => renderFrame(ctx, currentTime, renderContext);
+    video.addEventListener('seeked', redraw);
+    return () => video.removeEventListener('seeked', redraw);
+  }, [renderContext, playing, currentTime, transitionSeconds]);
 
   const patchOverride = useCallback((segmentId: string, patch: SegmentOverride) => {
     setOverrides((current) => ({ ...current, [segmentId]: { ...current[segmentId], ...patch } }));
@@ -211,8 +214,8 @@ export default function App() {
 
   /** 写真をカットに当てはめる。クリック割り当てでは次のカットへ自動で進む。 */
   const assignPhoto = useCallback(
-    (segmentId: string, photoId: string, advance: boolean) => {
-      patchOverride(segmentId, { photoId });
+    (segmentId: string, mediaId: string, advance: boolean) => {
+      patchOverride(segmentId, { mediaId });
       if (!advance) return;
       setSegments((current) => {
         const index = current.findIndex((s) => s.id === segmentId);
@@ -240,14 +243,14 @@ export default function App() {
         ) {
           return current;
         }
-        const order = current.map((s) => s.photoId);
+        const order = current.map((s) => s.mediaId);
         const [moved] = order.splice(fromIndex, 1);
         order.splice(toIndex, 0, moved);
 
         setOverrides((previous) => {
           const next = { ...previous };
           current.forEach((segment, i) => {
-            next[segment.id] = { ...next[segment.id], photoId: order[i] };
+            next[segment.id] = { ...next[segment.id], mediaId: order[i] };
           });
           return next;
         });
@@ -259,11 +262,11 @@ export default function App() {
 
   /** いまプレビューに映っているカット（＝ドラッグで動かす対象） */
   const visibleSegment = segments.length > 0 ? segments[segmentAt(segments, currentTime)] : null;
-  const visiblePhoto = visibleSegment ? photoMap.get(visibleSegment.photoId) : undefined;
+  const visiblePhoto = visibleSegment ? mediaMap.get(visibleSegment.mediaId) : undefined;
   const canPan = visibleSegment?.fit === 'cover' && visiblePhoto !== undefined;
 
   const panRef = useRef<{
-    photoId: string;
+    mediaId: string;
     startX: number;
     startY: number;
     origin: PhotoFocus;
@@ -279,7 +282,7 @@ export default function App() {
       // 表示サイズと canvas の実ピクセルの比
       const scale = canvas.width / rect.width;
       panRef.current = {
-        photoId: visiblePhoto.id,
+        mediaId: visiblePhoto.id,
         startX: e.clientX * scale,
         startY: e.clientY * scale,
         origin: focus[visiblePhoto.id] ?? { x: 0, y: 0 },
@@ -308,7 +311,7 @@ export default function App() {
     const nextY = pan.slack.y > 0 ? pan.origin.y + dy / pan.slack.y : pan.origin.y;
     setFocus((current) => ({
       ...current,
-      [pan.photoId]: {
+      [pan.mediaId]: {
         x: Math.min(1, Math.max(-1, nextX)),
         y: Math.min(1, Math.max(-1, nextY)),
       },
@@ -328,34 +331,17 @@ export default function App() {
     [],
   );
 
-  /** 保存済みの File から Photo（描画用）を作り直す。 */
+  /** 保存済みの File から素材を作り直す。 */
   const photosFromFiles = useCallback(
-    (files: { id: string; name: string; file: File }[]): Promise<Photo[]> =>
+    (files: { id: string; name: string; file: File }[]): Promise<MediaItem[]> =>
       Promise.all(
-        files.map(
-          (entry) =>
-            new Promise<Photo | null>((resolve) => {
-              const url = URL.createObjectURL(entry.file);
-              const image = new Image();
-              image.onload = () => {
-                photoFiles.current.set(entry.id, entry.file);
-                resolve({
-                  id: entry.id,
-                  name: entry.name,
-                  url,
-                  image,
-                  width: image.naturalWidth,
-                  height: image.naturalHeight,
-                });
-              };
-              image.onerror = () => {
-                URL.revokeObjectURL(url);
-                resolve(null);
-              };
-              image.src = url;
-            }),
+        files.map((entry) =>
+          loadMedia(entry.file).then((item) => {
+            if (item) photoFiles.current.set(item.id, entry.file);
+            return item;
+          }),
         ),
-      ).then((list) => list.filter((p): p is Photo => p !== null)),
+      ).then((list) => list.filter((p): p is MediaItem => p !== null)),
     [],
   );
 
@@ -483,6 +469,7 @@ export default function App() {
   const handleExport = useCallback(async () => {
     if (!renderContext || !audioFile) return;
     audioRef.current?.pause();
+    pauseAllVideos(mediaMap);
     const controller = new AbortController();
     exportAbort.current = controller;
     setExportProgress(0);
@@ -513,8 +500,8 @@ export default function App() {
   }, [renderContext, audioFile, quality]);
 
   const selected = segments.find((s) => s.id === selectedId) ?? null;
-  const usedPhotoIds = useMemo(
-    () => new Set(segments.map((s) => s.photoId)),
+  const usedMediaIds = useMemo(
+    () => new Set(segments.map((s) => s.mediaId)),
     [segments],
   );
   const ready = analysis !== null && photos.length > 0 && segments.length > 0;
@@ -582,19 +569,19 @@ export default function App() {
             }}
           />
 
-          <PhotoPool
+          <MediaPool
             photos={photos}
             audioName={audioFile?.name ?? null}
             analyzing={analyzing}
-            usedPhotoIds={usedPhotoIds}
+            usedMediaIds={usedMediaIds}
             hasSelection={selectedId !== null}
-            onAssign={(photoId) => {
-              if (selectedId) assignPhoto(selectedId, photoId, true);
+            onAssign={(mediaId) => {
+              if (selectedId) assignPhoto(selectedId, mediaId, true);
             }}
-            onDropCut={(cutIndex, photoId) => {
+            onDropCut={(cutIndex, mediaId) => {
               const target = segments[cutIndex];
               if (target) {
-                patchOverride(target.id, { photoId });
+                patchOverride(target.id, { mediaId });
                 setSelectedId(target.id);
               }
             }}
@@ -620,6 +607,12 @@ export default function App() {
             onFitForSelected={(fit: FitMode) => {
               if (!selected) return;
               patchOverride(selected.id, { fit });
+            }}
+            selectedMedia={selected ? (mediaMap.get(selected.mediaId) ?? null) : null}
+            beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
+            onVideoStartForSelected={(videoStart) => {
+              if (!selected) return;
+              patchOverride(selected.id, { videoStart });
             }}
             onClearOverride={() => {
               if (!selected) return;
@@ -764,15 +757,15 @@ export default function App() {
             <Timeline
               analysis={analysis}
               segments={segments}
-              photos={photoMap}
+              photos={mediaMap}
               currentTime={currentTime}
               playing={playing}
               selectedId={selectedId}
               onSeek={seek}
               onSelect={setSelectedId}
-              onDropPhoto={(segmentId, photoId) => assignPhoto(segmentId, photoId, false)}
+              onDropPhoto={(segmentId, mediaId) => assignPhoto(segmentId, mediaId, false)}
               onReorder={reorderCut}
-              transitionSeconds={(settings.transitionBeats * 60) / analysis.bpm}
+              transitionSeconds={transitionSeconds}
               onBpmOverride={(bpm) =>
                 setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
               }

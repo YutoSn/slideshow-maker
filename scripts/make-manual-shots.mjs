@@ -17,7 +17,7 @@ const page = await browser.newPage({
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 
 await page.goto('http://127.0.0.1:5173/');
-await page.setInputFiles('input[type=file][accept="image/*"]', photos);
+await page.setInputFiles('input[type=file][multiple]', photos);
 await page.setInputFiles('input[type=file][accept="audio/*"]', resolve('assets/ohayou.mp3'));
 await page.waitForSelector('.segments .segment', { timeout: 120000 });
 await page.fill('.panel:has-text("プロジェクト") input[type=text]', '2026 夏休み');
