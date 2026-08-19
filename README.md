@@ -21,12 +21,14 @@
 - **タイムライン編集** — 拡大・縮小して、カットごとに尺（拍数）とトランジションを個別調整
 - **BPM の手直し** — 直接入力、±1 / ±0.1、倍・半分の切り替え
 - **動画書き出し** — WebM 動画としてダウンロード（画質 3 段階、目安サイズ表示つき）
+- **プロジェクトの保存** — 写真・音源・編集内容をブラウザに自動保存し、開き直すと続きから再開できる
 - **解析結果の書き出し** — BPM・ビート位置を JSON で保存
 
 ## 使い方
 
-**はじめての方は [使い方マニュアル](docs/manual.md) をご覧ください。**
-インストールから書き出しまで、画面付きで順を追って説明しています。
+**はじめての方は [使い方マニュアル](https://yutosn.github.io/slideshow-maker/manual.html) をご覧ください。**
+インストールから書き出しまで、順を追って説明しています。
+アプリの右上からも開けます（実体は `public/manual.html`）。
 
 ### 起動
 
@@ -125,12 +127,26 @@ node scripts/e2e-timeline.mjs               # 拍の線とカットの位置ズ�
 node scripts/e2e-bpm.mjs                    # BPM の手直しを確認
 node scripts/e2e-fit-reorder.mjs            # 並べ替えと収め方・背景を確認
 node scripts/e2e-framing.mjs                # 表示位置の調整とプールへのドロップを確認
+node scripts/e2e-project.mjs                # プロジェクトの保存・復元とマニュアルのリンクを確認
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
 node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再生時間を確認
 ```
 
 いずれも `npm run dev` を起動した状態で実行してください。
+
+## プロジェクトの保存（`src/engine/projectStore.ts`）
+
+写真と音源はローカルのファイルなので JSON には書き出せません。
+IndexedDB は `File` / `Blob` / `Float32Array` をそのまま格納できるため、
+素材ごと保存しています。開き直したときに素材を選び直す必要がありません。
+
+保存するもの: 写真（File 本体）、音源、解析結果、全体設定、カット単位の
+手編集、写真ごとの表示位置。編集後 1.5 秒で自動保存し、起動時に
+最後に開いていたプロジェクトを復元します。
+
+保存先はブラウザなので、容量超過（`QuotaExceededError`）は起こり得ます。
+その場合は理由を添えて画面に出します。
 
 ## 公開（GitHub Pages）
 

@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import PhotoPool from './components/PhotoPool';
+import ProjectPanel from './components/ProjectPanel';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
+import {
+  deleteProject,
+  estimateUsage,
+  getLastOpenedId,
+  isStorageAvailable,
+  listProjects,
+  loadProject,
+  newProjectId,
+  saveProject,
+  setLastOpenedId,
+  type ProjectSummary,
+  type StoredProject,
+} from './engine/projectStore';
 import type { BeatAnalysis } from './engine/beatDetect';
 import {
   analysisToJson,
@@ -51,6 +65,17 @@ export default function App() {
   const [overrides, setOverrides] = useState<Record<string, SegmentOverride>>({});
   // 写真ごとの「どこを見せるか」。プレビューのドラッグで決める
   const [focus, setFocus] = useState<Record<string, PhotoFocus>>({});
+
+  // --- プロジェクトの保存 ---
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState('無題のプロジェクト');
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(null);
+  const [restored, setRestored] = useState<string | null>(null);
+  // 写真の File 本体は保存にしか使わないので、描画用の Photo とは別に持つ
+  const photoFiles = useRef<Map<string, File>>(new Map());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -77,15 +102,18 @@ export default function App() {
         new Promise<Photo | null>((resolve) => {
           const url = URL.createObjectURL(file);
           const image = new Image();
-          image.onload = () =>
+          image.onload = () => {
+            const id = `${file.name}-${file.size}-${file.lastModified}`;
+            photoFiles.current.set(id, file);
             resolve({
-              id: `${file.name}-${file.size}-${file.lastModified}`,
+              id,
               name: file.name,
               url,
               image,
               width: image.naturalWidth,
               height: image.naturalHeight,
             });
+          };
           // HEIC などブラウザが表示できない形式は静かに読み飛ばす
           image.onerror = () => {
             URL.revokeObjectURL(url);
@@ -300,6 +328,143 @@ export default function App() {
     [],
   );
 
+  /** 保存済みの File から Photo（描画用）を作り直す。 */
+  const photosFromFiles = useCallback(
+    (files: { id: string; name: string; file: File }[]): Promise<Photo[]> =>
+      Promise.all(
+        files.map(
+          (entry) =>
+            new Promise<Photo | null>((resolve) => {
+              const url = URL.createObjectURL(entry.file);
+              const image = new Image();
+              image.onload = () => {
+                photoFiles.current.set(entry.id, entry.file);
+                resolve({
+                  id: entry.id,
+                  name: entry.name,
+                  url,
+                  image,
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                });
+              };
+              image.onerror = () => {
+                URL.revokeObjectURL(url);
+                resolve(null);
+              };
+              image.src = url;
+            }),
+        ),
+      ).then((list) => list.filter((p): p is Photo => p !== null)),
+    [],
+  );
+
+  const refreshProjects = useCallback(() => {
+    if (!isStorageAvailable()) return;
+    void listProjects().then(setProjects);
+    void estimateUsage().then(setUsage);
+  }, []);
+
+  const applyProject = useCallback(
+    async (project: StoredProject) => {
+      const loaded = await photosFromFiles(project.photos);
+      setPhotos(loaded);
+      setAudioFile(project.audio);
+      setAnalysis(project.analysis);
+      setSettings(project.settings);
+      setOverrides(project.overrides);
+      setFocus(project.focus);
+      setProjectId(project.id);
+      setProjectName(project.name);
+      setSavedAt(project.updatedAt);
+      setSelectedId(null);
+      setCurrentTime(0);
+    },
+    [photosFromFiles],
+  );
+
+  const persist = useCallback(async () => {
+    if (!isStorageAvailable()) return;
+    if (photos.length === 0 && !audioFile) return;
+
+    const id = projectId ?? newProjectId();
+    setProjectId(id);
+    setSaveStatus('saving');
+    try {
+      await saveProject({
+        id,
+        name: projectName.trim() || '無題のプロジェクト',
+        updatedAt: Date.now(),
+        photos: photos.map((p) => ({
+          id: p.id,
+          name: p.name,
+          file: photoFiles.current.get(p.id)!,
+        })),
+        audio: audioFile,
+        analysis,
+        settings,
+        overrides,
+        focus,
+      });
+      setSavedAt(Date.now());
+      setSaveStatus('saved');
+      refreshProjects();
+    } catch (cause) {
+      setSaveStatus('error');
+      const quota = cause instanceof DOMException && cause.name === 'QuotaExceededError';
+      setError(
+        quota
+          ? 'ブラウザの保存容量が足りず、保存できませんでした。写真を減らすか、不要なプロジェクトを削除してください。'
+          : cause instanceof Error
+            ? `保存できませんでした: ${cause.message}`
+            : '保存できませんでした',
+      );
+    }
+  }, [photos, audioFile, analysis, settings, overrides, focus, projectId, projectName, refreshProjects]);
+
+  // 起動時に、前回開いていたプロジェクトを復元する
+  useEffect(() => {
+    if (!isStorageAvailable()) return;
+    refreshProjects();
+    void (async () => {
+      try {
+        const id = await getLastOpenedId();
+        if (!id) return;
+        const project = await loadProject(id);
+        if (!project) return;
+        await applyProject(project);
+        setRestored(project.name);
+      } catch {
+        // 復元できなくても、新規状態で使えればよい
+      }
+    })();
+  }, [applyProject, refreshProjects]);
+
+  // 編集内容が変わったら、少し待ってから自動保存する
+  useEffect(() => {
+    if (!projectId) return;
+    setSaveStatus('idle');
+    const timer = setTimeout(() => void persist(), 1500);
+    return () => clearTimeout(timer);
+  }, [projectId, persist]);
+
+  const startNewProject = useCallback(() => {
+    setPhotos([]);
+    setAudioFile(null);
+    setAnalysis(null);
+    setOverrides({});
+    setFocus({});
+    setSegments([]);
+    setSelectedId(null);
+    setCurrentTime(0);
+    setProjectId(null);
+    setProjectName('無題のプロジェクト');
+    setSavedAt(null);
+    setRestored(null);
+    photoFiles.current.clear();
+    void setLastOpenedId(null);
+  }, []);
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (audio) audio.currentTime = time;
@@ -357,8 +522,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__head">
-        <h1>Slideshow Maker</h1>
-        <p>写真を音楽のビートに合わせて切り替える、ブラウザ完結のスライドショー作成ツール</p>
+        <div>
+          <h1>Slideshow Maker</h1>
+          <p>写真を音楽のビートに合わせて切り替える、ブラウザ完結のスライドショー作成ツール</p>
+        </div>
+        <a className="app__manual" href="./manual.html" target="_blank" rel="noopener noreferrer">
+          使い方マニュアル
+          <span aria-hidden="true">↗</span>
+        </a>
       </header>
 
       {error && (
@@ -370,8 +541,47 @@ export default function App() {
         </div>
       )}
 
+      {restored && (
+        <div className="notice notice--info" role="status">
+          前回のプロジェクト「{restored}」を復元しました。
+          <button type="button" onClick={() => setRestored(null)} aria-label="閉じる">
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="app__body">
         <div className="app__side">
+          <ProjectPanel
+            name={projectName}
+            projects={projects}
+            currentId={projectId}
+            status={saveStatus}
+            savedAt={savedAt}
+            canSave={photos.length > 0 || audioFile !== null}
+            usage={usage}
+            onNameChange={setProjectName}
+            onSave={() => void persist()}
+            onNew={startNewProject}
+            onOpen={(id) => {
+              void (async () => {
+                const project = await loadProject(id);
+                if (project) {
+                  await applyProject(project);
+                  await setLastOpenedId(id);
+                  setRestored(null);
+                }
+              })();
+            }}
+            onDelete={(id) => {
+              void (async () => {
+                await deleteProject(id);
+                if (id === projectId) startNewProject();
+                refreshProjects();
+              })();
+            }}
+          />
+
           <PhotoPool
             photos={photos}
             audioName={audioFile?.name ?? null}

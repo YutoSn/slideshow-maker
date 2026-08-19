@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Slideshow Maker 使い方マニュアル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@600;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --ground: #fafafb;
+    --surface: #ffffff;
+    --sunken: #f2f3f6;
+    --ink: #15171c;
+    --muted: #5a6170;
+    --line: #e3e5ea;
+    --accent: #2c51c8;
+    --accent-soft: #eaeefb;
+    --warn: #a84a24;
+    --warn-soft: #fbf0e9;
+    --warn-line: #e8c9b4;
+
+    --display: "Zen Old Mincho", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    --body: "Noto Sans JP", system-ui, "Hiragino Kaku Gothic ProN", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1015;
+      --surface: #161922;
+      --sunken: #1c202a;
+      --ink: #e8eaf0;
+      --muted: #949bab;
+      --line: #262b36;
+      --accent: #86a6ff;
+      --accent-soft: #1a2138;
+      --warn: #e0a077;
+      --warn-soft: #241a14;
+      --warn-line: #4a3526;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0e1015;
+    --surface: #161922;
+    --sunken: #1c202a;
+    --ink: #e8eaf0;
+    --muted: #949bab;
+    --line: #262b36;
+    --accent: #86a6ff;
+    --accent-soft: #1a2138;
+    --warn: #e0a077;
+    --warn-soft: #241a14;
+    --warn-line: #4a3526;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ---------- 導入 ---------- */
+
+  .hero {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 76px 0 46px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .hero__eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 6vw, 3rem);
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .hero p {
+    margin: 0;
+    max-width: 34em;
+    color: var(--muted);
+    font-size: 1.02rem;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .fact {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .fact b { color: var(--ink); font-weight: 500; }
+
+  .launch {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    align-self: flex-start;
+    margin-top: 8px;
+    padding: 15px 24px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--ground);
+    text-decoration: none;
+    transition: filter 0.15s ease;
+  }
+
+  .launch:hover { filter: brightness(1.1); }
+
+  .launch__label { font-weight: 700; font-size: 0.95rem; }
+
+  .launch__url {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    opacity: 0.85;
+    word-break: break-all;
+  }
+
+  /* ---------- 章 ---------- */
+
+  .part { padding-top: 62px; }
+
+  .part__head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 26px;
+  }
+
+  .part__num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    flex: none;
+  }
+
+  .part h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.62rem;
+    line-height: 1.4;
+    margin: 0;
+    letter-spacing: 0.01em;
+  }
+
+  h3 {
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 1.02rem;
+    margin: 34px 0 10px;
+    letter-spacing: 0.01em;
+  }
+
+  p { margin: 0 0 14px; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  ol, ul { margin: 0 0 14px; padding-left: 1.35em; }
+  li { margin-bottom: 7px; }
+  li:last-child { margin-bottom: 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .cmd {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 13px 16px;
+    margin: 0 0 14px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+  }
+
+  /* ---------- 手順 ---------- */
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    counter-reset: step;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .step::before {
+    counter-increment: step;
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--accent);
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step__body > h3:first-child { margin-top: 0; }
+
+  @media (max-width: 560px) {
+    .step { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .step::before { font-size: 1.15rem; }
+  }
+
+  /* ---------- 部品 ---------- */
+
+  .note {
+    background: var(--accent-soft);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin: 0 0 14px;
+    font-size: 0.94rem;
+  }
+
+  .note--warn {
+    background: var(--warn-soft);
+    border-left-color: var(--warn);
+    border-top: 1px solid var(--warn-line);
+    border-right: 1px solid var(--warn-line);
+    border-bottom: 1px solid var(--warn-line);
+  }
+
+  .note__label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    margin-bottom: 5px;
+    color: var(--accent);
+  }
+
+  .note--warn .note__label { color: var(--warn); }
+
+  .muted-note { color: var(--muted); font-size: 0.9rem; }
+
+  .scroller { overflow-x: auto; margin: 0 0 16px; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 460px;
+    font-size: 0.93rem;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  th {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    border-bottom-color: var(--ink);
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  td b { font-weight: 700; }
+
+  /* ---------- 分岐カード ---------- */
+
+  .platforms {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .platform {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+
+  .platform h3 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .platform h3 span {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+
+  .platform p { font-size: 0.93rem; color: var(--muted); }
+  .platform .cmd { margin-bottom: 0; font-size: 0.85rem; }
+
+  /* ---------- 画面の見かた ---------- */
+
+  .areas { display: flex; flex-direction: column; gap: 0; }
+
+  .area {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 18px;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
+  }
+
+  .area:last-child { border-bottom: none; }
+
+  .area__where {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .area__name { font-weight: 700; margin-bottom: 2px; }
+  .area__what { color: var(--muted); font-size: 0.94rem; }
+
+  @media (max-width: 560px) {
+    .area { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  }
+
+  /* ---------- 困ったとき ---------- */
+
+  .faq { display: flex; flex-direction: column; gap: 2px; }
+
+  .faq details {
+    border-bottom: 1px solid var(--line);
+    padding: 4px 0;
+  }
+
+  .faq summary {
+    cursor: pointer;
+    padding: 12px 4px 12px 0;
+    font-weight: 500;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .faq summary::-webkit-details-marker { display: none; }
+
+  .faq summary::after {
+    content: "+";
+    font-family: var(--mono);
+    color: var(--accent);
+    flex: none;
+    transition: transform 0.18s ease;
+  }
+
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq summary:hover { color: var(--accent); }
+
+  .faq__answer {
+    padding: 0 4px 16px 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .faq__answer ul { margin: 8px 0 0; }
+  .faq__answer b { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
+  footer {
+    margin-top: 76px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="hero__eyebrow">使い方マニュアル</div>
+    <h1>Slideshow Maker</h1>
+    <p>
+      写真を音楽のビートに合わせて切り替える、スライドショー作成ツールです。
+      曲を読み込むとテンポを自動で解析し、拍に揃えて写真を切り替えます。
+    </p>
+    <div class="facts">
+      <span class="fact"><b>Chrome</b> で動きます</span>
+      <span class="fact">写真も音源も <b>外に送られません</b></span>
+      <span class="fact">書き出し形式 <b>WebM</b></span>
+    </div>
+
+    <a class="launch" href="./">
+      <span class="launch__label">インストール不要ですぐ使う</span>
+      <span class="launch__url">アプリを開く</span>
+    </a>
+  </header>
+
+  <!-- 1 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">01</span>
+      <h2>準備（最初の一回だけ）</h2>
+    </div>
+
+    <p>
+      <a href="./">公開ページ</a>を使う場合、この章は不要です。
+      自分のパソコンに入れて使う場合のみ <b>Node.js</b> が必要になります。
+    </p>
+    <ol>
+      <li><a href="https://nodejs.org/ja">nodejs.org/ja</a> を開く</li>
+      <li>左側の <b>「LTS」</b> と書かれたボタンからダウンロード</li>
+      <li>ダウンロードしたファイルを開き、画面の指示どおり「次へ」で進める</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">02</span>
+      <h2>開き方</h2>
+    </div>
+
+    <div class="note">
+      <span class="note__label">まずはこちらが手軽です</span>
+      <a href="./">このページと同じサイトのアプリ</a>
+      を開けば、インストールなしでそのまま使えます。
+      以下は、自分のパソコンに入れて使う場合の手順です。
+    </div>
+
+    <div class="platforms">
+      <div class="platform">
+        <h3>Windows <span>ダブルクリック</span></h3>
+        <p>フォルダの中の <code>start.bat</code> をダブルクリックするだけです。黒い画面が出て、少しすると Chrome が自動で開きます。</p>
+      </div>
+      <div class="platform">
+        <h3>Mac <span>ターミナル</span></h3>
+        <p>このフォルダで次を実行します。</p>
+        <span class="cmd">./start.sh</span>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="note__label">初回のみ数分かかります</span>
+      必要な部品を自動でそろえます（<code>npm install</code>）。二回目以降は数秒で開きます。
+    </div>
+
+    <h3>ブラウザが自動で開かないとき</h3>
+    <p>黒い画面に出ている次のアドレスを、Chrome のアドレス欄に貼り付けてください。</p>
+    <span class="cmd">http://localhost:5173/</span>
+
+    <h3>終わり方</h3>
+    <p>黒い画面（ターミナル）で <b>Ctrl + C</b>（Mac は Control + C）を押します。画面を閉じるだけでも止まります。</p>
+
+    <div class="note note--warn">
+      <span class="note__label">黒い画面は閉じないでください</span>
+      黒い画面がアプリの本体です。閉じるとブラウザ側も動かなくなります。作業中は開いたままにしてください。
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">03</span>
+      <h2>画面の見かた</h2>
+    </div>
+
+    <div class="areas">
+      <div class="area">
+        <div class="area__where">左上</div>
+        <div>
+          <div class="area__name">写真プール</div>
+          <div class="area__what">使う写真を貯めておく場所。ここからカットに当てはめます</div>
+        </div>
+      </div>
+      <div class="area">
+        <div class="area__where">左下</div>
+        <div>
+          <div class="area__name">見せ方を決める</div>
+          <div class="area__what">切り替えの速さや動きなど、全体の設定</div>
+        </div>
+      </div>
+      <div class="area">
+        <div class="area__where">右上</div>
+        <div>
+          <div class="area__name">プレビュー</div>
+          <div class="area__what">実際の見え方の確認と、動画の書き出し</div>
+        </div>
+      </div>
+      <div class="area">
+        <div class="area__where">右下</div>
+        <div>
+          <div class="area__name">タイムライン</div>
+          <div class="area__what">カット（写真 1 枚ぶんの区間）の並び。編集はここで行います</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">04</span>
+      <h2>作る手順</h2>
+    </div>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step__body">
+          <h3>写真と音源を入れる</h3>
+          <p>左上の点線の枠に、写真と音源を<b>まとめてドラッグ＆ドロップ</b>します。「写真を足す」「音源を選ぶ」ボタンからでも選べます。</p>
+          <p>音源を入れると自動でビート解析が始まり、終わるとタイムラインに BPM とカット数が出ます。写真はあとから何枚でも足せます。</p>
+          <div class="note note--warn">
+            <span class="note__label">iPhone の写真（HEIC）は使えません</span>
+            Chrome が HEIC を表示できないため、読み込み時に自動で読み飛ばされます。JPEG に変換してから入れてください。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>全体の雰囲気を決める</h3>
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>設定</th><th>何が変わるか</th><th>おすすめ</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><b>1 枚あたりの拍数</b></td><td>写真が切り替わる速さ。小さいほどテンポよく切り替わる</td><td>8 拍</td></tr>
+                <tr><td><b>トランジションの長さ</b></td><td>写真どうしが重なる時間</td><td>1 拍</td></tr>
+                <tr><td><b>Ken Burns</b></td><td>ゆっくり寄る・引く動きの強さ。0 で静止</td><td>12%</td></tr>
+                <tr><td><b>拍に合わせた拡大</b></td><td>拍のたびに軽く弾む演出</td><td>4%</td></tr>
+                <tr><td><b>トランジション</b></td><td>切り替え方。「おまかせ」は 4 種類を混ぜる</td><td>おまかせ</td></tr>
+                <tr><td><b>写真の収め方</b></td><td>画面いっぱい（切れる）／全体を収める（余白あり）</td><td>画面いっぱい</td></tr>
+                <tr><td><b>余白の埋め方</b></td><td>「全体を収める」のときの背景</td><td>写真をぼかして敷く</td></tr>
+                <tr><td><b>シャッフル</b></td><td>入れた順ではなくランダムに並べる</td><td>お好みで</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>写真をカットに当てはめる</h3>
+          <p>ここがこのツールの中心です。プールに貯めた写真を、好きなカットに当てはめられます。やり方は 2 通りあります。</p>
+
+          <h3>A. クリックで順に当てはめる</h3>
+          <p>たくさん割り当てるときに向いています。</p>
+          <ol>
+            <li>タイムライン下のカットを 1 つクリックして選ぶ（青い枠がつきます）</li>
+            <li>左の写真プールで、使いたい写真をクリック</li>
+            <li>割り当てられ、<b>選択が自動で次のカットに進みます</b></li>
+            <li>あとは写真をクリックしていくだけで順に埋まります</li>
+          </ol>
+
+          <h3>B. ドラッグして落とす</h3>
+          <p>狙ったカットに入れたいときに向いています。写真プールの写真を、タイムラインのカットまでドラッグして離します。落とせるカットは緑色に光ります。</p>
+
+          <h3>C. カットを掴んで並べ替える</h3>
+          <p>タイムラインのカットを掴んで、別のカットの位置までドラッグして離すと、その位置へ移ります。間のカットは順にずれます。</p>
+          <p class="muted-note">例：3 番目の写真を 8 番目へ動かすと、4〜8 番目が 1 つずつ前へ繰り上がります。写真が増えたり消えたりすることはありません。</p>
+
+          <h3>目印</h3>
+          <ul>
+            <li>まだ一度も使っていない写真には <b>「未」</b> バッジがつきます</li>
+            <li>「未使用の写真だけ表示」で、残りだけを並べられます</li>
+            <li>カット左上の数字は、先頭から数えたカット番号です</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>カットごとに微調整する</h3>
+          <p>カットを選ぶと、左下の「選択中のカット」で個別に調整できます。</p>
+          <ul>
+            <li><b>− 1 拍 / + 1 拍</b> … そのカットの長さを変える（以降のカットは自動でずれます）</li>
+            <li><b>トランジション</b> … そのカットの切り替え方だけ変える</li>
+            <li><b>このカットの収め方</b> … その写真だけ「全体を収める」に変える</li>
+            <li><b>このカットを自動に戻す</b> … 手を加えた内容を取り消す</li>
+          </ul>
+
+          <h3>写真が切れてしまうとき</h3>
+          <p>初期設定の「画面いっぱい」は、画面の縦横比（16:9）に合わせて写真の上下または左右が切れます。縦向きの写真だと大きく切れることがあります。</p>
+          <p>全部を見せたいときは「写真の収め方」を <b>「全体を収める」</b> にしてください。写真全体が入る代わりに余白ができるので、その埋め方を選べます。</p>
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>余白の埋め方</th><th>見え方</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><b>写真をぼかして敷く</b></td><td>同じ写真を引き伸ばしてぼかしたものを背景に。余白が目立ちにくい</td></tr>
+                <tr><td><b>黒</b></td><td>映画のような黒帯</td></tr>
+                <tr><td><b>白</b></td><td>明るい写真に合う</td></tr>
+                <tr><td><b>好きな色</b></td><td>色を自由に指定</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note">
+            <span class="note__label">組み合わせられます</span>
+            全体は「画面いっぱい」のまま、縦向きの写真だけ「全体を収める」にする、といった使い分けもできます
+            （カットを選んで「このカットの収め方」から）。
+          </div>
+          <div class="note">
+            <span class="note__label">手編集は設定を変えても消えません</span>
+            「1 枚あたりの拍数」を変えてカット割りをやり直しても、割り当てた写真はそのまま残ります。
+            全部やり直したいときは「手編集をすべて取り消す」を押してください。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>確認する</h3>
+          <ul>
+            <li>プレビュー画面をクリックすると再生・一時停止</li>
+            <li>タイムラインの波形部分をクリックすると、その位置に飛べます</li>
+            <li>カットをクリックすると、そのカットの頭から確認できます</li>
+          </ul>
+          <p>波形の<b>青い縦線が小節の頭</b>、細い線が拍です。写真の切り替わりがここに揃います。</p>
+
+          <h3>タイムラインの拡大・縮小</h3>
+          <p>カットが細かくて選びにくいときは、タイムライン右上のボタンで拡大できます。</p>
+          <ul>
+            <li><b>＋ / −</b> … 拡大・縮小（再生位置を中心に動きます）</li>
+            <li><b>全体</b> … 曲全体が収まる大きさに戻します</li>
+            <li><b>Ctrl（Mac は ⌘）+ ホイール</b> … マウス位置を中心に拡大・縮小</li>
+          </ul>
+          <p>拡大すると横スクロールできるようになり、再生中は再生位置を自動で追いかけます。拡大率に応じて、上段に時刻の目盛りが出ます。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>動画にする</h3>
+          <ol>
+            <li>画質を選ぶ（その曲の長さでのだいたいのファイルサイズが出ます）</li>
+            <li><b>「動画を書き出す」</b> を押す</li>
+            <li>終わると <code>slideshow.webm</code> がダウンロードされます</li>
+          </ol>
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>画質</th><th>大きさ</th><th>向いている用途</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><b>高画質 720p</b></td><td>大きい</td><td>保存用・テレビで見る</td></tr>
+                <tr><td><b>標準 720p</b></td><td>ふつう</td><td>ふだんはこれ</td></tr>
+                <tr><td><b>軽量 540p</b></td><td>小さい</td><td>LINE やメールで送る</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note note--warn">
+            <span class="note__label">曲の長さと同じだけ時間がかかります</span>
+            5 分の曲なら約 5 分です。実際に録画しているためで、途中でタブを切り替えたり画面を閉じたりしないでください。
+            やめたいときは「中止」を押します。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>保存する・続きから再開する</h3>
+          <p>編集した内容は <b>ブラウザの中に自動で保存</b>されます。ページを閉じても、次に開いたときに前回の続きから再開できます。</p>
+          <ul>
+            <li>左上の「プロジェクト」で<b>名前</b>を付けられます</li>
+            <li>変更するたびに自動保存されます（手動で「保存」も押せます）</li>
+            <li>複数のプロジェクトを保存して、一覧から切り替えられます</li>
+            <li>「新しく始める」で、まっさらな状態に戻せます</li>
+          </ul>
+          <p>写真・音源・カット割り・写真の割り当て・表示位置まで、まとめて保存されます。次に開いたときに素材を選び直す必要はありません。</p>
+          <div class="note note--warn">
+            <span class="note__label">保存先はこのブラウザの中です</span>
+            別のパソコンやブラウザからは開けません。また、ブラウザの「閲覧履歴の削除」でサイトデータを消すと、保存したプロジェクトも消えます。
+            大事な作品は、動画に書き出して保存しておいてください。
+          </div>
+          <p class="muted-note">写真が多いとブラウザの保存容量を超えることがあります。その場合はお知らせが出るので、不要なプロジェクトを削除するか写真を減らしてください。使用量はパネル下部に表示されます。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">05</span>
+      <h2>困ったときは</h2>
+    </div>
+
+    <div class="faq">
+      <details>
+        <summary>写真を入れたのに枚数が増えない</summary>
+        <div class="faq__answer">HEIC 形式かもしれません。読み飛ばした枚数がオレンジ色のお知らせに出ます。JPEG に変換してから入れ直してください。</div>
+      </details>
+      <details>
+        <summary>切り替わりが曲とズレている気がする</summary>
+        <div class="faq__answer">
+          曲によってはテンポの推定が半分や倍になることがあります。左下の「BPM を手で直す」で調整してください。
+          <ul>
+            <li>数字を直接打ち替えられます（打ち終えたら Enter）</li>
+            <li><b>−1 / +1</b> で 1 ずつ、<b>−.1 / +.1</b> で 0.1 ずつ動かせます</li>
+            <li>推定が倍・半分になっているだけのときは、<b>「2 倍」「半分」</b> ボタンが早いです</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>書き出した動画が再生できない</summary>
+        <div class="faq__answer">WebM 形式です。Chrome にファイルをドラッグすれば再生できます。Windows の「フォト」アプリでも開けます。</div>
+      </details>
+      <details>
+        <summary>ファイルが大きすぎて送れない</summary>
+        <div class="faq__answer">画質を「軽量（540p）」にして書き出し直してください。</div>
+      </details>
+      <details>
+        <summary>黒い画面に赤い文字が出た</summary>
+        <div class="faq__answer">準備（<code>npm install</code>）が途中で失敗していることが多いです。黒い画面を閉じて、もう一度 <code>start.bat</code> をダブルクリックしてください。</div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">06</span>
+      <h2>覚えておくと便利なこと</h2>
+    </div>
+
+    <ul>
+      <li>写真も音源もパソコンの外には出ません。ブラウザの中だけで処理されます</li>
+      <li>編集内容はブラウザに自動保存されます。ただし保存先はこのブラウザの中だけなので、完成したら動画に書き出しておくと安心です</li>
+      <li>「解析結果を保存」で、検出した BPM とビート位置を JSON として残せます</li>
+      <li>Google ドライブの写真を使うときは、いったんパソコンにダウンロードしてから読み込ませてください</li>
+    </ul>
+  </section>
+
+  <footer>
+    Slideshow Maker — 音楽同期フォトスライドショー作成ツール
+  </footer>
+
+</div>
+
+</body>
+</html>
