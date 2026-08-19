@@ -107,6 +107,35 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
  * カットごとの手編集。ビート格子から組み直しても消えないよう、
  * 生成されたセグメントとは別に持つ。
  */
+/**
+ * 保存されたプロジェクトの設定を、いまの版で安全に使える形にする。
+ *
+ * 古い版で保存したものには、あとから足した項目が無い。そのまま渡すと
+ * undefined が描画まで届いて落ちるので、既定値に重ねて欠けを埋め、
+ * 数値は有限かどうかも確かめる。
+ */
+export function normalizeSettings(stored: Partial<ProjectSettings> | null | undefined): ProjectSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+  const number = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+  return {
+    ...merged,
+    beatsPerPhoto: number(merged.beatsPerPhoto, DEFAULT_SETTINGS.beatsPerPhoto),
+    transitionBeats: number(merged.transitionBeats, DEFAULT_SETTINGS.transitionBeats),
+    beatPulse: number(merged.beatPulse, DEFAULT_SETTINGS.beatPulse),
+    kenBurns: number(merged.kenBurns, DEFAULT_SETTINGS.kenBurns),
+    shake: number(merged.shake, DEFAULT_SETTINGS.shake),
+    vignette: number(merged.vignette, DEFAULT_SETTINGS.vignette),
+    filter: merged.filter ?? DEFAULT_SETTINGS.filter,
+    fit: merged.fit ?? DEFAULT_SETTINGS.fit,
+    background: merged.background ?? DEFAULT_SETTINGS.background,
+    backgroundColor: merged.backgroundColor ?? DEFAULT_SETTINGS.backgroundColor,
+    transition: merged.transition ?? DEFAULT_SETTINGS.transition,
+    shuffle: Boolean(merged.shuffle),
+  };
+}
+
 export interface SegmentOverride {
   /** 割り当てた写真（プールから当てはめたもの） */
   mediaId?: string;

@@ -351,3 +351,26 @@ select, input[type='number'] {
 .trim__used { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.75; }
 .trim input[type='range'] { width: 100%; accent-color: var(--accent); }
 .trim .muted { margin-top: 6px; }
+
+.crash {
+  max-width: 560px;
+  margin: 12vh auto;
+  padding: 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.crash h1 { font-size: 18px; margin: 0 0 10px; }
+.crash p { color: var(--muted); margin: 0 0 16px; }
+.crash .row { margin-bottom: 18px; }
+.crash__detail {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  overflow-x: auto;
+  word-break: break-all;
+}

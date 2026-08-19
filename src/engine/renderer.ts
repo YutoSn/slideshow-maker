@@ -85,7 +85,7 @@ function easeInOut(t: number): number {
 
 /** 直近のビートからの経過に応じた、拍に合わせた微妙な拡大量。 */
 function beatPulse(time: number, analysis: BeatAnalysis, amount: number): number {
-  if (amount <= 0 || analysis.beats.length === 0) return 1;
+  if (!Number.isFinite(amount) || amount <= 0 || analysis.beats.length === 0) return 1;
   const period = 60 / analysis.bpm;
   const since = (time - analysis.offset) % period;
   if (since < 0) return 1;
@@ -203,7 +203,8 @@ function drawVignette(
   height: number,
   strength: number,
 ): void {
-  if (strength <= 0) return;
+  // 保存データが古いなどで値が欠けていても、描画は止めない
+  if (!Number.isFinite(strength) || strength <= 0) return;
   const key = `${width}x${height}:${strength.toFixed(3)}`;
   if (vignetteCache?.key !== key) {
     const gradient = ctx.createRadialGradient(
@@ -231,7 +232,7 @@ function beatShake(
   amount: number,
   width: number,
 ): { x: number; y: number } {
-  if (amount <= 0) return { x: 0, y: 0 };
+  if (!Number.isFinite(amount) || amount <= 0) return { x: 0, y: 0 };
   const period = 60 / analysis.bpm;
   const index = Math.floor((time - analysis.offset) / period);
   const since = (time - analysis.offset) % period;
@@ -274,7 +275,7 @@ export function renderFrame(
   // 揺れと色味は 1 フレームまとめて適用する。写真ごとにかけるより軽い
   ctx.save();
   if (shake.x !== 0 || shake.y !== 0) ctx.translate(shake.x, shake.y);
-  ctx.filter = FILTERS[settings.filter];
+  ctx.filter = FILTERS[settings.filter] ?? 'none';
 
   const draw = (target: Segment, at: number, alpha: number, shift = 0, extraScale = 1) => {
     const source = media.get(target.mediaId);

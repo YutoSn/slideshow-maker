@@ -132,6 +132,7 @@ node scripts/e2e-framing.mjs                # 表示位置の調整とプール�
 node scripts/e2e-project.mjs                # プロジェクトの保存・復元とマニュアルのリンクを確認
 node scripts/e2e-layout.mjs                 # 固定レイアウトと横スクロールを確認
 node scripts/e2e-video.mjs                  # 動画の同期・開始位置・トランジションを確認
+node scripts/e2e-legacy-project.mjs         # 古い版で保存したプロジェクトを開けるか確認
 node scripts/make-demo-video.mjs            # 動作確認用の動画クリップを生成
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
@@ -168,6 +169,12 @@ IndexedDB は `File` / `Blob` / `Float32Array` をそのまま格納できるた
 
 保存先はブラウザなので、容量超過（`QuotaExceededError`）は起こり得ます。
 その場合は理由を添えて画面に出します。
+
+**設定項目を足すときは `normalizeSettings()` を通すこと。** 保存済みの
+プロジェクトには当然その項目が無く、`undefined` のまま描画まで届くと
+例外になります。React は例外を捕まえないとツリーごと外すので、画面が
+真っ暗になり、しかも原因が保存データ側なので読み込み直しても直りません。
+既定値に重ねて欠けを埋め、`ErrorBoundary` でも受け止めています。
 
 ## マニュアルの作り方
 

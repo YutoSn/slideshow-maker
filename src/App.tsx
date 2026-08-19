@@ -31,6 +31,7 @@ import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
 import {
   DEFAULT_SETTINGS,
+  normalizeSettings,
   type MediaItem,
   type ProjectSettings,
   type FitMode,
@@ -357,7 +358,7 @@ export default function App() {
       setPhotos(loaded);
       setAudioFile(project.audio);
       setAnalysis(project.analysis);
-      setSettings(project.settings);
+      setSettings(normalizeSettings(project.settings));
       setOverrides(project.overrides);
       setFocus(project.focus);
       setProjectId(project.id);
