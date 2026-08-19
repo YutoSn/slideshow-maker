@@ -10,3 +10,7 @@ out/
 
 # TypeScript のビルド情報
 *.tsbuildinfo
+
+# マニュアルの中間生成物（public/manual.html に埋め込まれる）
+docs/manual-shots.json
+docs/manual-artifact.html

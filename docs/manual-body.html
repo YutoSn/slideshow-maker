@@ -1,0 +1,415 @@
+<div class="wrap">
+
+  <header class="hero">
+    <div class="hero__eyebrow">使い方マニュアル</div>
+    <h1>Slideshow Maker</h1>
+    <p>
+      写真を音楽のビートに合わせて切り替える、スライドショー作成ツールです。
+      曲を読み込むとテンポを自動で解析し、拍に揃えて写真を切り替えます。
+    </p>
+    <div class="facts">
+      <span class="fact"><b>Chrome</b> で動きます</span>
+      <span class="fact">写真も音源も <b>外に送られません</b></span>
+      <span class="fact">書き出し形式 <b>WebM</b></span>
+    </div>
+
+    <a class="launch" href="./">
+      <span class="launch__label">インストール不要ですぐ使う</span>
+      <span class="launch__url">アプリを開く</span>
+    </a>
+  </header>
+
+  <!-- 1 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">01</span>
+      <h2>開く</h2>
+    </div>
+
+    <p>
+      上の「アプリを開く」を押すだけです。インストールも会員登録も要りません。
+      写真も音源もあなたのパソコンの中だけで処理され、どこにも送信されません。
+    </p>
+
+    <details class="fold">
+      <summary>
+        <span>自分のパソコンに入れて使う場合 <span class="summary__note">（ふだんは不要です）</span></span>
+      </summary>
+      <div class="fold__body">
+        <p>
+          インターネットに繋がらない場所で使いたい、あるいは自分で改造したい、
+          といった場合の手順です。ふだんは上のリンクを開くだけで十分です。
+        </p>
+
+        <h3>1. Node.js を入れる</h3>
+        <ol>
+          <li><a href="https://nodejs.org/ja">nodejs.org/ja</a> を開く</li>
+          <li>左側の <b>「LTS」</b> と書かれたボタンからダウンロード</li>
+          <li>ダウンロードしたファイルを開き、画面の指示どおり「次へ」で進める</li>
+        </ol>
+
+        <h3>2. 起動する</h3>
+        <div class="platforms">
+          <div class="platform">
+            <h3>Windows <span>ダブルクリック</span></h3>
+            <p>フォルダの中の <code>start.bat</code> をダブルクリックします。黒い画面が出て、少しすると Chrome が自動で開きます。</p>
+          </div>
+          <div class="platform">
+            <h3>Mac <span>ターミナル</span></h3>
+            <p>このフォルダで次を実行します。</p>
+            <span class="cmd">./start.sh</span>
+          </div>
+        </div>
+
+        <div class="note">
+          <span class="note__label">初回のみ数分かかります</span>
+          必要な部品を自動でそろえます（<code>npm install</code>）。二回目以降は数秒で開きます。
+        </div>
+
+        <h3>ブラウザが自動で開かないとき</h3>
+        <p>黒い画面に出ている次のアドレスを、Chrome のアドレス欄に貼り付けてください。</p>
+        <span class="cmd">http://localhost:5173/</span>
+
+        <h3>終わり方</h3>
+        <p>黒い画面（ターミナル）で <b>Ctrl + C</b>（Mac は Control + C）を押します。画面を閉じるだけでも止まります。</p>
+
+        <div class="note note--warn">
+          <span class="note__label">黒い画面は閉じないでください</span>
+          黒い画面がアプリの本体です。閉じるとブラウザ側も動かなくなります。作業中は開いたままにしてください。
+        </div>
+
+        <h3>うまくいかないとき</h3>
+        <p>黒い画面に赤い文字が出たときは、準備（<code>npm install</code>）が途中で失敗していることが多いです。黒い画面を閉じて、もう一度 <code>start.bat</code> をダブルクリックしてください。</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- 2 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">02</span>
+      <h2>画面の見かた</h2>
+    </div>
+
+    <figure>
+      <img src="{{img:overview}}" alt="アプリ全体の画面。左側にプロジェクト・写真プール・見せ方の設定、右側にプレビューとタイムラインが並んでいる" />
+    </figure>
+
+    <ol class="legend">
+      <li><span>1</span><div><b>プロジェクト</b><em>名前を付けて保存。開き直すと続きから再開できます</em></div></li>
+      <li><span>2</span><div><b>写真プール</b><em>使う写真を貯めておく場所。ここからカットに当てはめます</em></div></li>
+      <li><span>3</span><div><b>見せ方を決める</b><em>切り替えの速さや動きなど、全体の設定</em></div></li>
+      <li><span>4</span><div><b>プレビュー</b><em>仕上がりの確認と、動画の書き出し</em></div></li>
+      <li><span>5</span><div><b>タイムライン</b><em>カット（写真 1 枚ぶんの区間）の並び。編集はここで行います</em></div></li>
+      <li><span>6</span><div><b>使い方マニュアル</b><em>このページを別のタブで開きます</em></div></li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">03</span>
+      <h2>作る手順</h2>
+    </div>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step__body">
+          <h3>写真と音源を入れる</h3>
+
+          <figure>
+            <img src="{{img:pool}}" alt="写真プール。点線の枠、操作の案内、読み込んだ写真の一覧が並んでいる" />
+          </figure>
+
+          <ol class="legend">
+            <li><span>1</span><div><b>ここにドロップ</b><em>写真と音源をまとめてドラッグ＆ドロップできます。ボタンから選ぶこともできます</em></div></li>
+            <li><span>2</span><div><b>操作の案内</b><em>いま何ができるかが表示されます</em></div></li>
+            <li><span>3</span><div><b>写真の一覧</b><em>まだ使っていない写真には「未」が付きます</em></div></li>
+          </ol>
+
+          <p>音源を入れると自動でビート解析が始まり、終わるとタイムラインに BPM とカット数が出ます。写真はあとから何枚でも足せます。</p>
+
+          <div class="note note--warn">
+            <span class="note__label">iPhone の写真（HEIC）は使えません</span>
+            Chrome が HEIC を表示できないため、読み込み時に自動で読み飛ばされます。JPEG に変換してから入れてください。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>全体の雰囲気を決める</h3>
+
+          <figure>
+            <img src="{{img:settings}}" alt="見せ方の設定パネル。拍数、トランジション、Ken Burns などのスライダーが並んでいる" />
+          </figure>
+
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>設定</th><th>何が変わるか</th><th>おすすめ</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><b>1 枚あたりの拍数</b></td><td>写真が切り替わる速さ。小さいほどテンポよく切り替わる</td><td>8 拍</td></tr>
+                <tr><td><b>トランジションの長さ</b></td><td>写真どうしが重なる時間</td><td>1 拍</td></tr>
+                <tr><td><b>Ken Burns</b></td><td>ゆっくり寄る・引く動きの強さ。0 で静止</td><td>12%</td></tr>
+                <tr><td><b>拍に合わせた拡大</b></td><td>拍のたびに軽く弾む演出</td><td>4%</td></tr>
+                <tr><td><b>写真の収め方</b></td><td>画面いっぱい（切れる）／全体を収める（余白あり）</td><td>画面いっぱい</td></tr>
+                <tr><td><b>余白の埋め方</b></td><td>「全体を収める」のときの背景</td><td>写真をぼかして敷く</td></tr>
+                <tr><td><b>トランジション</b></td><td>切り替え方。「おまかせ」は 4 種類を混ぜる</td><td>おまかせ</td></tr>
+                <tr><td><b>シャッフル</b></td><td>入れた順ではなくランダムに並べる</td><td>お好みで</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>写真をカットに当てはめる</h3>
+
+          <figure>
+            <img src="{{img:timeline}}" alt="タイムライン。上段に波形と拍の線、下段にカットが並び、右上に拡大縮小のボタンがある" />
+          </figure>
+
+          <ol class="legend">
+            <li><span>1</span><div><b>波形と拍の線</b><em>青い縦線が小節の頭。クリックするとその位置へ飛べます</em></div></li>
+            <li><span>2</span><div><b>カット</b><em>写真 1 枚ぶんの区間。左上の数字は先頭からの番号です</em></div></li>
+            <li><span>3</span><div><b>拡大・縮小</b><em>カットが細かくて選びにくいときに使います</em></div></li>
+          </ol>
+
+          <p>写真を当てはめるやり方は 4 通りあります。使いやすいものをどうぞ。</p>
+
+          <h3>A. クリックで順に当てはめる</h3>
+          <p>たくさん割り当てるときに向いています。</p>
+          <ol>
+            <li>タイムラインのカットを 1 つクリックして選ぶ（青い枠がつきます）</li>
+            <li>左の写真プールで、使いたい写真をクリック</li>
+            <li>割り当てられ、<b>選択が自動で次のカットに進みます</b></li>
+            <li>あとは写真をクリックしていくだけで順に埋まります</li>
+          </ol>
+
+          <h3>B. 写真をカットへドラッグ</h3>
+          <p>狙ったカットに入れたいときに向いています。落とせるカットは緑色に光ります。</p>
+
+          <h3>C. カットを写真へドラッグ</h3>
+          <p>逆向きでも構いません。カットを掴んで、プールの写真に落としても差し替えられます。</p>
+
+          <h3>D. カットどうしを並べ替える</h3>
+          <p>カットを掴んで別のカットの位置に落とすと、そこへ移ります。間のカットは順にずれます。</p>
+          <p class="muted-note">例：3 番目の写真を 8 番目へ動かすと、4〜8 番目が 1 つずつ前へ繰り上がります。写真が増えたり消えたりすることはありません。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>写真のどこを見せるか決める</h3>
+
+          <figure>
+            <img src="{{img:preview}}" alt="プレビュー画面。中央に左右方向の矢印が重ねてあり、ドラッグで動かせることを示している" />
+            <figcaption>プレビューの上をドラッグすると、写真が一緒に動きます。</figcaption>
+          </figure>
+
+          <p>「画面いっぱい」では、画面に収まらない部分が切れます。どこを残すかは、<b>プレビューを直接ドラッグして</b>決められます。</p>
+          <ol>
+            <li>タイムラインでカットをクリックして、その写真をプレビューに出す</li>
+            <li>プレビューの上をドラッグする</li>
+            <li>やり直すときはプレビュー下の「位置をリセット」</li>
+          </ol>
+
+          <p>この位置は<b>写真ごと</b>に覚えられるので、同じ写真を何か所で使っていてもすべて同じ見え方になります。</p>
+
+          <div class="note">
+            <span class="note__label">動かせる向きは写真によります</span>
+            はみ出している向きにしか動かせません。横長の写真を 16:9 に収めると、はみ出すのは上下だけなので上下にしか動きません。
+          </div>
+
+          <h3>写真全体を見せたいとき</h3>
+          <p>「写真の収め方」を <b>「全体を収める」</b> にすると、切らずに全体が入ります。代わりに余白ができるので、その埋め方を選べます。</p>
+
+          <div class="compare">
+            <figure>
+              <img src="{{img:fitCover}}" alt="画面いっぱいに表示した状態。写真の上下が切れている" />
+              <figcaption><b>画面いっぱい</b>はみ出した部分は切れる</figcaption>
+            </figure>
+            <figure>
+              <img src="{{img:fitContain}}" alt="全体を収めた状態。左右の余白に、同じ写真をぼかしたものが敷かれている" />
+              <figcaption><b>全体を収める＋ぼかし</b>余白が目立ちにくい</figcaption>
+            </figure>
+            <figure>
+              <img src="{{img:fitBlack}}" alt="全体を収めた状態。左右の余白が黒く塗られている" />
+              <figcaption><b>全体を収める＋黒</b>映画のような黒帯</figcaption>
+            </figure>
+          </div>
+
+          <div class="note">
+            <span class="note__label">組み合わせられます</span>
+            全体は「画面いっぱい」のまま、縦向きの写真だけ「全体を収める」にする、といった使い分けもできます
+            （カットを選んで「このカットの収め方」から）。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>カットごとに微調整する</h3>
+          <p>カットを選ぶと、左下の「選択中のカット」で個別に調整できます。</p>
+          <ul>
+            <li><b>− 1 拍 / + 1 拍</b> … そのカットの長さを変える（以降のカットは自動でずれます）</li>
+            <li><b>トランジション</b> … そのカットの切り替え方だけ変える</li>
+            <li><b>このカットの収め方</b> … その写真だけ「全体を収める」に変える</li>
+            <li><b>このカットを自動に戻す</b> … 手を加えた内容を取り消す</li>
+          </ul>
+          <div class="note">
+            <span class="note__label">手編集は設定を変えても消えません</span>
+            「1 枚あたりの拍数」を変えてカット割りをやり直しても、割り当てた写真はそのまま残ります。
+            全部やり直したいときは「手編集をすべて取り消す」を押してください。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>確認する</h3>
+          <ul>
+            <li>プレビュー画面をクリックすると再生・一時停止</li>
+            <li>タイムラインの波形部分をクリックすると、その位置に飛べます</li>
+            <li>カットをクリックすると、そのカットの頭から確認できます</li>
+          </ul>
+
+          <h3>タイムラインの拡大・縮小</h3>
+          <ul>
+            <li><b>＋ / −</b> … 拡大・縮小（再生位置を中心に動きます）</li>
+            <li><b>全体</b> … 曲全体が収まる大きさに戻します</li>
+            <li><b>Ctrl（Mac は ⌘）+ ホイール</b> … マウス位置を中心に拡大・縮小</li>
+          </ul>
+          <p>拡大すると横スクロールできるようになり、再生中は再生位置を自動で追いかけます。</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>動画にする</h3>
+
+          <figure>
+            <img src="{{img:export}}" alt="プレビュー下の操作列。画質の選択と「動画を書き出す」ボタンがある" />
+          </figure>
+
+          <ol class="legend">
+            <li><span>1</span><div><b>画質を選ぶ</b><em>その曲の長さでのだいたいのファイルサイズが出ます</em></div></li>
+            <li><span>2</span><div><b>動画を書き出す</b><em>終わると <code>slideshow.webm</code> がダウンロードされます</em></div></li>
+          </ol>
+
+          <div class="scroller">
+            <table>
+              <thead>
+                <tr><th>画質</th><th>大きさ</th><th>向いている用途</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><b>高画質 720p</b></td><td>大きい</td><td>保存用・テレビで見る</td></tr>
+                <tr><td><b>標準 720p</b></td><td>ふつう</td><td>ふだんはこれ</td></tr>
+                <tr><td><b>軽量 540p</b></td><td>小さい</td><td>LINE やメールで送る</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="note note--warn">
+            <span class="note__label">曲の長さと同じだけ時間がかかります</span>
+            5 分の曲なら約 5 分です。実際に録画しているためで、途中でタブを切り替えたり画面を閉じたりしないでください。
+            やめたいときは「中止」を押します。
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step__body">
+          <h3>保存する・続きから再開する</h3>
+
+          <figure>
+            <img src="{{img:project}}" alt="プロジェクトのパネル。名前の入力欄と、保存・新しく始めるのボタンがある" />
+          </figure>
+
+          <p>編集した内容は <b>ブラウザの中に自動で保存</b>されます。ページを閉じても、次に開いたときに前回の続きから再開できます。</p>
+          <ul>
+            <li><b>名前</b>を付けられます</li>
+            <li>変更するたびに自動保存されます（手動で「保存」も押せます）</li>
+            <li>複数のプロジェクトを保存して、一覧から切り替えられます</li>
+            <li>「新しく始める」で、まっさらな状態に戻せます</li>
+          </ul>
+          <p>写真・音源・カット割り・写真の割り当て・表示位置まで、まとめて保存されます。次に開いたときに素材を選び直す必要はありません。</p>
+
+          <div class="note note--warn">
+            <span class="note__label">保存先はこのブラウザの中です</span>
+            別のパソコンやブラウザからは開けません。また、ブラウザの「閲覧履歴の削除」でサイトデータを消すと、保存したプロジェクトも消えます。
+            大事な作品は、動画に書き出して保存しておいてください。
+          </div>
+          <p class="muted-note">写真が多いとブラウザの保存容量を超えることがあります。その場合はお知らせが出るので、不要なプロジェクトを削除するか写真を減らしてください。使用量はパネル下部に表示されます。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">04</span>
+      <h2>困ったときは</h2>
+    </div>
+
+    <div class="faq">
+      <details>
+        <summary>写真を入れたのに枚数が増えない</summary>
+        <div class="faq__answer">HEIC 形式かもしれません。読み飛ばした枚数がオレンジ色のお知らせに出ます。JPEG に変換してから入れ直してください。</div>
+      </details>
+      <details>
+        <summary>切り替わりが曲とズレている気がする</summary>
+        <div class="faq__answer">
+          曲によってはテンポの推定が半分や倍になることがあります。左下の「BPM を手で直す」で調整してください。
+          <ul>
+            <li>数字を直接打ち替えられます（打ち終えたら Enter）</li>
+            <li><b>−1 / +1</b> で 1 ずつ、<b>−.1 / +.1</b> で 0.1 ずつ動かせます</li>
+            <li>推定が倍・半分になっているだけのときは、<b>「2 倍」「半分」</b> ボタンが早いです</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>プレビューをドラッグしても動かない</summary>
+        <div class="faq__answer">はみ出している向きにしか動きません。横長の写真では上下だけ、縦長の写真では左右だけになります。また「全体を収める」を選んでいるときは、写真全体が映っているので調整はありません。</div>
+      </details>
+      <details>
+        <summary>書き出した動画が再生できない</summary>
+        <div class="faq__answer">WebM 形式です。Chrome にファイルをドラッグすれば再生できます。Windows の「フォト」アプリでも開けます。</div>
+      </details>
+      <details>
+        <summary>ファイルが大きすぎて送れない</summary>
+        <div class="faq__answer">画質を「軽量（540p）」にして書き出し直してください。</div>
+      </details>
+      <details>
+        <summary>保存できませんと出た</summary>
+        <div class="faq__answer">ブラウザの保存容量が足りていません。「保存したプロジェクト」から不要なものを削除するか、写真の枚数を減らしてください。</div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="part">
+    <div class="part__head">
+      <span class="part__num">05</span>
+      <h2>覚えておくと便利なこと</h2>
+    </div>
+
+    <ul>
+      <li>写真も音源もパソコンの外には出ません。ブラウザの中だけで処理されます</li>
+      <li>編集内容はブラウザに自動保存されます。ただし保存先はこのブラウザの中だけなので、完成したら動画に書き出しておくと安心です</li>
+      <li>「解析結果を保存」で、検出した BPM とビート位置を JSON として残せます</li>
+      <li>Google ドライブの写真を使うときは、いったんパソコンにダウンロードしてから読み込ませてください</li>
+    </ul>
+  </section>
+
+  <footer>
+    Slideshow Maker — 音楽同期フォトスライドショー作成ツール
+  </footer>
+
+</div>

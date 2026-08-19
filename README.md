@@ -28,7 +28,7 @@
 
 **はじめての方は [使い方マニュアル](https://yutosn.github.io/slideshow-maker/manual.html) をご覧ください。**
 インストールから書き出しまで、順を追って説明しています。
-アプリの右上からも開けます（実体は `public/manual.html`）。
+アプリの右上からも開けます。
 
 ### 起動
 
@@ -147,6 +147,25 @@ IndexedDB は `File` / `Blob` / `Float32Array` をそのまま格納できるた
 
 保存先はブラウザなので、容量超過（`QuotaExceededError`）は起こり得ます。
 その場合は理由を添えて画面に出します。
+
+## マニュアルの作り方
+
+`public/manual.html` は生成物です。実際のアプリを操作して撮った画像を
+data URI で埋め込んだ、単体で開ける 1 ファイルになっています。
+
+```bash
+npm run dev                 # 別のターミナルで起動しておく
+npm run manual:shots        # アプリを操作して説明用の画像を撮る
+npm run manual              # 本文と画像を組み立てて public/manual.html を書き出す
+```
+
+| ファイル | 役割 |
+|---|---|
+| `docs/manual-body.html` | 本文。`{{img:名前}}` が画像の差し込み位置 |
+| `docs/manual-style.html` | 見た目 |
+| `docs/manual-shots.json` | 撮った画像（生成物・Git 管理外） |
+
+画面を変更したら `npm run manual:shots` を撮り直してください。
 
 ## 公開（GitHub Pages）
 
