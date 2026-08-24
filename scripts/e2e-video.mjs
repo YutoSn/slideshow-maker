@@ -99,6 +99,30 @@ if (trimVisible > 0) {
   console.log('開始位置で画が変わる:', trimWorks, `(${before} -> ${after})`);
 }
 
+// --- 再生速度 ----------------------------------------------------
+let rateWorks = false;
+const rateButtons = await page.locator('.rates button').count();
+if (rateButtons > 0) {
+  await page.evaluate((at) => {
+    document.querySelector('audio').currentTime = at;
+  }, base + 1.0);
+  await page.waitForTimeout(500);
+  const atNormal = await stage();
+
+  await page.click('.rates button:has-text("2x")');
+  await page.waitForTimeout(900);
+  const atDouble = await stage();
+
+  // 2 倍なら、同じ位置でもクリップの倍の地点が映る
+  rateWorks = atNormal !== atDouble;
+  const label = await page.textContent('.trim__title--tight b');
+  console.log('速度ボタン         :', rateButtons, '種類 / 表示:', label?.trim());
+  console.log('等速と 2 倍で違う  :', rateWorks, `(${atNormal.split('|')[1]} -> ${atDouble.split('|')[1]})`);
+
+  await page.click('.rates button:has-text("等速")');
+  await page.waitForTimeout(500);
+}
+
 await page.screenshot({ path: `${SHOTS}/video.jpg`, type: 'jpeg', quality: 76 });
 
 // --- 追加したトランジション ---------------------------------------
@@ -143,4 +167,6 @@ if (!advancing) throw new Error('動画のコマが進んでいない');
 if (trimVisible === 0) throw new Error('開始位置の調整が出ていない');
 if (!trimWorks) throw new Error('開始位置を変えても画が変わらない');
 if (!isGrey) throw new Error('色味が効いていない');
+if (rateButtons === 0) throw new Error('再生速度の操作が出ていない');
+if (!rateWorks) throw new Error('再生速度を変えても映像が変わらない');
 console.log('VIDEO & EFFECTS OK');

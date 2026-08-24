@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { BeatAnalysis } from '../engine/beatDetect';
 import { formatTime } from '../engine/audio';
 import BpmField from './BpmField';
+import { onPlayhead } from '../engine/playhead';
 import type { MediaItem, Segment } from '../engine/types';
 
 interface Props {
@@ -52,6 +53,9 @@ export default function Timeline({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const playheadRef = useRef<HTMLDivElement>(null);
+  const segmentsRef = useRef<HTMLDivElement>(null);
+  const activeIndexRef = useRef(-1);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -221,21 +225,50 @@ export default function Timeline({
     [currentTime, duration],
   );
 
+  /**
+   * 再生中の見た目の更新。
+   * 毎フレーム React を動かすとスマホでは間に合わないので、
+   * 線の位置と強調表示だけを直接書き換える。
+   */
+  useEffect(() => {
+    if (!playing) return;
+    return onPlayhead((time) => {
+      const line = playheadRef.current;
+      if (line) line.style.left = `${(time / duration) * 100}%`;
+
+      const strip = segmentsRef.current;
+      if (!strip) return;
+      let index = -1;
+      for (let i = 0; i < segments.length; i++) {
+        if (time >= segments[i].start && time < segments[i].end) {
+          index = i;
+          break;
+        }
+      }
+      if (index === activeIndexRef.current) return;
+      strip.children[activeIndexRef.current]?.classList.remove('segment--active');
+      strip.children[index]?.classList.add('segment--active');
+      activeIndexRef.current = index;
+    });
+  }, [playing, duration, segments]);
+
   // 再生中は再生位置を画面内に保つ。
   // ただし手で動かした直後は、追尾が邪魔になるので少し待つ。
   useEffect(() => {
     if (!playing || zoom === 1) return;
-    if (Date.now() - userScrolledAt.current < 3000) return;
-    const scroll = scrollRef.current;
-    const inner = innerRef.current;
-    if (!scroll || !inner) return;
+    return onPlayhead((time) => {
+      if (Date.now() - userScrolledAt.current < 3000) return;
+      const scroll = scrollRef.current;
+      const inner = innerRef.current;
+      if (!scroll || !inner) return;
 
-    const x = (currentTime / duration) * inner.clientWidth - scroll.scrollLeft;
-    const view = scroll.clientWidth;
-    if (x < view * 0.1 || x > view * 0.9) {
-      scroll.scrollLeft = (currentTime / duration) * inner.clientWidth - view / 2;
-    }
-  }, [currentTime, playing, zoom, duration]);
+      const x = (time / duration) * inner.clientWidth - scroll.scrollLeft;
+      const view = scroll.clientWidth;
+      if (x < view * 0.1 || x > view * 0.9) {
+        scroll.scrollLeft = (time / duration) * inner.clientWidth - view / 2;
+      }
+    });
+  }, [playing, zoom, duration]);
 
   /**
    * ホイール操作。
@@ -326,7 +359,7 @@ export default function Timeline({
             onClick={(e) => seekFromEvent(e.clientX)}
           />
 
-          <div className="segments">
+          <div className="segments" ref={segmentsRef}>
             {segments.map((segment, index) => {
               const photo = photos.get(segment.mediaId);
               // 実際の開始時刻で配置する。こうすると上段の拍の線と必ず揃う
@@ -406,6 +439,7 @@ export default function Timeline({
           </div>
 
           <div
+            ref={playheadRef}
             className="timeline__playhead"
             style={{ left: `${(currentTime / duration) * 100}%` }}
           />

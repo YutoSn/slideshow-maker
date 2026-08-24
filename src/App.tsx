@@ -27,6 +27,7 @@ import {
 } from './engine/exporter';
 import { coverSlack, renderFrame, segmentAt, type PhotoFocus } from './engine/renderer';
 import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
+import { emitPlayhead, onPlayhead } from './engine/playhead';
 import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
 import {
@@ -40,9 +41,26 @@ import {
   type TransitionKind,
 } from './engine/types';
 
-const CANVAS_WIDTH = 1280;
-const CANVAS_HEIGHT = 720;
 const AUDIO_BITRATE = 128_000;
+
+/**
+ * プレビューの描画解像度を決める。
+ *
+ * 表示は数百 px しかないのに 1280x720 で描くと、スマホでは 1 フレームに
+ * 150ms 以上かかる。表示サイズと端末の性能から、必要なだけの大きさを選ぶ。
+ * 書き出しは別の canvas を使うので、ここを下げても仕上がりの画質には影響しない。
+ */
+function previewSizeFor(cssWidth: number): { width: number; height: number } {
+  const cores = navigator.hardwareConcurrency ?? 4;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const wanted = cssWidth * dpr;
+
+  let width = 1280;
+  if (wanted <= 720 || cores <= 4) width = 640;
+  else if (wanted <= 1100 || cores <= 6) width = 960;
+
+  return { width, height: Math.round((width * 9) / 16) };
+}
 
 /** ビート格子を BPM だけ差し替えて作り直す（手動補正用）。 */
 function rebuildWithBpm(analysis: BeatAnalysis, bpm: number): BeatAnalysis {
@@ -86,6 +104,10 @@ export default function App() {
   const [quality, setQuality] = useState<QualityPreset>('standard');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageFrameRef = useRef<HTMLDivElement>(null);
+  const playheadRef = useRef(0);
+  const timeReadoutRef = useRef<HTMLSpanElement>(null);
+  const [previewSize, setPreviewSize] = useState({ width: 1280, height: 720 });
   const audioRef = useRef<HTMLAudioElement>(null);
   const exportAbort = useRef<AbortController | null>(null);
   // ドラッグ終了時に呼びたいが、定義順の都合で ref 経由にする
@@ -151,6 +173,23 @@ export default function App() {
     setSegments(applyOverrides(base, overrides, analysis, available));
   }, [analysis, photos, settings, overrides]);
 
+  // 表示サイズが変わったら、描画解像度を選び直す
+  useEffect(() => {
+    const frame = stageFrameRef.current;
+    if (!frame) return;
+    const update = () => {
+      const cssWidth = frame.clientWidth || window.innerWidth;
+      setPreviewSize((current) => {
+        const next = previewSizeFor(cssWidth);
+        return next.width === current.width ? current : next;
+      });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+
   const transitionSeconds = analysis
     ? (settings.transitionBeats * 60) / analysis.bpm
     : 0;
@@ -169,26 +208,29 @@ export default function App() {
     if (!ctx) return;
 
     let handle = 0;
-    let lastPublished = 0;
 
     const loop = () => {
       const audio = audioRef.current;
       if (!audio) return;
+      // 別のタブを見ているときは描いても無駄なので、次の機会まで待つ
+      if (document.hidden) {
+        handle = requestAnimationFrame(loop);
+        return;
+      }
       const time = audio.currentTime;
+      playheadRef.current = time;
       syncVideos(renderContext, time, true, transitionSeconds);
       renderFrame(ctx, time, renderContext);
 
-      // タイムラインの再描画は 10 回/秒あれば十分
-      if (time - lastPublished > 0.1 || time < lastPublished) {
-        lastPublished = time;
-        setCurrentTime(time);
-      }
+      // 再生位置は DOM を直接更新して配る（React の再描画を挟まない）
+      emitPlayhead(time);
+
       handle = requestAnimationFrame(loop);
     };
 
     handle = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(handle);
-  }, [renderContext, playing]);
+  }, [renderContext, playing, transitionSeconds]);
 
   // 停止中は、シークや設定変更のたびに 1 枚だけ描き直す。
   useEffect(() => {
@@ -452,9 +494,24 @@ export default function App() {
     void setLastOpenedId(null);
   }, []);
 
+  // 再生中の時刻表示は、React を通さず書き換える
+  useEffect(() => {
+    if (!playing) return;
+    let last = '';
+    return onPlayhead((time) => {
+      const text = formatTime(time);
+      if (text !== last && timeReadoutRef.current) {
+        last = text;
+        timeReadoutRef.current.textContent = text;
+      }
+    });
+  }, [playing]);
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (audio) audio.currentTime = time;
+    playheadRef.current = time;
+    emitPlayhead(time);
     setCurrentTime(time);
   }, []);
 
@@ -615,6 +672,10 @@ export default function App() {
               if (!selected) return;
               patchOverride(selected.id, { videoStart });
             }}
+            onVideoRateForSelected={(videoRate) => {
+              if (!selected) return;
+              patchOverride(selected.id, { videoRate });
+            }}
             onClearOverride={() => {
               if (!selected) return;
               setOverrides((current) => {
@@ -630,11 +691,11 @@ export default function App() {
 
         <main className="app__main">
           <section className="panel panel--stage">
-            <div className="stage__frame">
+            <div className="stage__frame" ref={stageFrameRef}>
             <canvas
               ref={canvasRef}
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
+              width={previewSize.width}
+              height={previewSize.height}
               className={`stage${canPan ? ' stage--pannable' : ''}`}
               onPointerDown={beginPan}
               onPointerMove={movePan}
@@ -689,7 +750,8 @@ export default function App() {
                 先頭へ
               </button>
               <span className="muted">
-                {formatTime(currentTime)} / {formatTime(analysis?.duration ?? 0)}
+                <span ref={timeReadoutRef}>{formatTime(currentTime)}</span> /{' '}
+                {formatTime(analysis?.duration ?? 0)}
               </span>
               <div className="transport__spacer" />
               <select

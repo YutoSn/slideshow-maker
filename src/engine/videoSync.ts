@@ -1,6 +1,6 @@
 import type { RenderContext } from './renderer';
 import { segmentAt } from './renderer';
-import { isVideo, type MediaItem, type Segment } from './types';
+import { clampVideoRate, isVideo, type MediaItem, type Segment } from './types';
 
 /**
  * 動画クリップを、曲の時刻に合わせた位置に保つ。
@@ -15,9 +15,10 @@ const DRIFT_LIMIT = 0.25;
 /** 直前・直後どれだけ先のカットまで動かしておくか（秒） */
 const PRELOAD_AHEAD = 1.5;
 
-/** そのカットが、いま何秒目のコマを映すべきか。 */
+/** そのカットが、いま何秒目のコマを映すべきか。再生速度も掛ける。 */
 export function clipTimeFor(segment: Segment, item: MediaItem, time: number): number {
-  const into = Math.max(0, time - segment.start);
+  const rate = clampVideoRate(segment.videoRate);
+  const into = Math.max(0, time - segment.start) * rate;
   const from = Math.max(0, segment.videoStart);
   if (item.duration <= 0.05) return from;
   // クリップがカットより短いときは、頭に戻って繰り返す
@@ -57,6 +58,9 @@ export function syncVideos(
     const video = item.element;
     const wanted = clipTimeFor(segment, item, Math.max(time, segment.start));
     const isCurrent = segment === segments[index];
+
+    const rate = clampVideoRate(segment.videoRate);
+    if (video.playbackRate !== rate) video.playbackRate = rate;
 
     if (playing && isCurrent) {
       if (video.paused) void video.play().catch(() => undefined);

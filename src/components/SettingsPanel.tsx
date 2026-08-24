@@ -21,6 +21,7 @@ interface Props {
   selectedMedia: MediaItem | null;
   beatSeconds: number;
   onVideoStartForSelected: (videoStart: number) => void;
+  onVideoRateForSelected: (rate: number) => void;
   onClearOverride: () => void;
   hasOverrides: boolean;
   onClearAllOverrides: () => void;
@@ -84,6 +85,7 @@ export default function SettingsPanel({
   selectedMedia,
   beatSeconds,
   onVideoStartForSelected,
+  onVideoRateForSelected,
   onClearOverride,
   hasOverrides,
   onClearAllOverrides,
@@ -302,6 +304,7 @@ export default function SettingsPanel({
                 item={selectedMedia}
                 beatSeconds={beatSeconds}
                 onChange={onVideoStartForSelected}
+                onRateChange={onVideoRateForSelected}
               />
             )}
 

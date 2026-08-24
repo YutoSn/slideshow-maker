@@ -149,22 +149,17 @@ function drawBackground(
 
   if (settings.background === 'blur') {
     if (!item) return;
-    const cover = Math.max(width / item.width, height / item.height) * 1.12;
-    const drawWidth = item.width * cover;
-    const drawHeight = item.height * cover;
+    // 全画面に blur フィルタをかけると、スマホでは 1 フレームが数百 ms になる。
+    // いったん小さく描いてから引き伸ばすと、見た目はほぼ同じで桁違いに軽い。
+    const small = blurScratch(item, width, height);
+    if (!small) return;
+
     ctx.save();
     ctx.globalAlpha = alpha;
-    // ぼかすと縁が薄くなるので、少し大きめに描いてから外側を隠す
-    ctx.filter = `blur(${Math.round(Math.min(width, height) / 26)}px)`;
-    ctx.drawImage(
-      item.element,
-      (width - drawWidth) / 2,
-      (height - drawHeight) / 2,
-      drawWidth,
-      drawHeight,
-    );
-    ctx.filter = 'none';
-    // 少し暗く落として、手前の写真との境目を出す
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'low';
+    ctx.drawImage(small, 0, 0, width, height);
+    // 手前の写真との境目を出すため、少し暗く落とす
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
@@ -195,6 +190,38 @@ const FILTERS: Record<LookFilter, string> = {
 };
 
 let vignetteCache: { key: string; gradient: CanvasGradient } | null = null;
+
+/**
+ * ぼかし背景用の小さな canvas。引き伸ばすことでぼかしの代わりにする。
+ * 写真は中身が変わらないので、素材ごとに作ったものを使い回す。
+ * 動画は毎フレーム変わるので作り直す（40px 幅なので十分軽い）。
+ */
+const blurCache = new Map<string, HTMLCanvasElement>();
+
+function blurScratch(item: MediaItem, width: number, height: number): HTMLCanvasElement | null {
+  const w = 40;
+  const h = Math.max(1, Math.round((w * height) / width));
+  const key = `${item.id}:${w}x${h}`;
+
+  const cached = blurCache.get(key);
+  if (cached && item.kind === 'photo') return cached;
+
+  const canvas = cached ?? document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const cover = Math.max(w / item.width, h / item.height) * 1.12;
+  const dw = item.width * cover;
+  const dh = item.height * cover;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(item.element, (w - dw) / 2, (h - dh) / 2, dw, dh);
+
+  if (blurCache.size > 60) blurCache.clear();
+  blurCache.set(key, canvas);
+  return canvas;
+}
 
 /** 四隅を落とす。毎フレーム作り直さないよう、グラデーションは使い回す。 */
 function drawVignette(

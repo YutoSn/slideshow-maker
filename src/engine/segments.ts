@@ -1,4 +1,5 @@
 import type { BeatAnalysis } from './beatDetect';
+import { clampVideoRate } from './types';
 import type {
   MediaItem,
   ProjectSettings,
@@ -69,6 +70,7 @@ export function buildSegments(
           : settings.transition,
       fit: settings.fit,
       videoStart: 0,
+      videoRate: 1,
       seed: 1000 + n * 7919,
     });
 
@@ -117,6 +119,7 @@ export function applyOverrides(
       transition: override?.transition ?? segment.transition,
       fit: override?.fit ?? segment.fit,
       videoStart: override?.videoStart ?? segment.videoStart,
+      videoRate: clampVideoRate(override?.videoRate ?? segment.videoRate),
       start,
       end,
       beats: beatCount,

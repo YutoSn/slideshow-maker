@@ -374,3 +374,8 @@ select, input[type='number'] {
   overflow-x: auto;
   word-break: break-all;
 }
+
+.trim__title--tight { margin-top: 10px; }
+.rates { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.rates button { flex: 1; min-width: 44px; padding: 5px 4px; font-size: 12px; }
+.rates .rates__on { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }

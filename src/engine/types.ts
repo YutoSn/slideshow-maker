@@ -15,6 +15,14 @@ export interface MediaItem {
   thumbnail: string;
 }
 
+export const MIN_VIDEO_RATE = 0.25;
+export const MAX_VIDEO_RATE = 4;
+
+export function clampVideoRate(rate: number | undefined): number {
+  if (typeof rate !== 'number' || !Number.isFinite(rate)) return 1;
+  return Math.min(MAX_VIDEO_RATE, Math.max(MIN_VIDEO_RATE, rate));
+}
+
 export function isVideo(item: MediaItem): item is MediaItem & { element: HTMLVideoElement } {
   return item.kind === 'video';
 }
@@ -58,6 +66,8 @@ export interface Segment {
   fit: FitMode;
   /** 動画のとき、クリップのどこから使うか（秒） */
   videoStart: number;
+  /** 動画の再生速度（1 が等速。0.25〜4） */
+  videoRate: number;
   /** Ken Burns の演出をセグメントごとに固定するための種 */
   seed: number;
 }
@@ -146,4 +156,6 @@ export interface SegmentOverride {
   fit?: FitMode;
   /** 動画のとき、クリップのどこから使うか（秒） */
   videoStart?: number;
+  /** 動画の再生速度 */
+  videoRate?: number;
 }
