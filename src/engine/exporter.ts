@@ -1,5 +1,6 @@
 import type { BeatAnalysis } from './beatDetect';
 import { renderFrame, type RenderContext } from './renderer';
+import { pauseAllVideos, syncVideos } from './videoSync';
 import { fixWebmDuration } from './webmDuration';
 
 export interface ExportOptions {
@@ -92,10 +93,14 @@ export async function exportVideo(
   };
 
   const duration = render.analysis.duration;
+  // 動画クリップを進めるのに必要（プレビューと同じ計算にそろえる）
+  const transitionSeconds =
+    (render.settings.transitionBeats * 60) / render.analysis.bpm;
   let frameHandle = 0;
 
   const cleanup = () => {
     cancelAnimationFrame(frameHandle);
+    pauseAllVideos(render.media);
     audio.pause();
     for (const track of stream.getTracks()) track.stop();
     void audioContext.close();
@@ -113,6 +118,8 @@ export async function exportVideo(
       return;
     }
     const time = audio.currentTime;
+    // これを呼ばないと動画は止まったコマのまま録画される
+    syncVideos(render, time, true, transitionSeconds);
     renderFrame(ctx, time, render);
     onProgress(Math.min(1, time / duration));
     if (audio.ended || time >= duration - 0.05) {
@@ -123,6 +130,8 @@ export async function exportVideo(
   };
 
   await audioContext.resume();
+  // 先頭のコマを合わせてから録り始める
+  syncVideos(render, 0, false, transitionSeconds);
   recorder.start(1000);
   await audio.play();
   tick();

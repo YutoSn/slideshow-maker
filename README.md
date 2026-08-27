@@ -134,6 +134,8 @@ node scripts/e2e-layout.mjs                 # 固定レイアウトと横スク�
 node scripts/e2e-video.mjs                  # 動画の同期・開始位置・トランジションを確認
 node scripts/e2e-legacy-project.mjs         # 古い版で保存したプロジェクトを開けるか確認
 node scripts/bench-mobile.mjs               # スマホ相当（CPU 4 倍遅い）でのフレーム時間を測る
+node scripts/e2e-export-video.mjs           # 書き出した動画の中で動画クリップが動いているか確認
+node scripts/make-demo-audio.mjs            # 確認用の短いクリック音源を生成
 node scripts/make-demo-video.mjs            # 動作確認用の動画クリップを生成
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
@@ -151,6 +153,12 @@ node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再�
 
 画面に出ていないクリップは止めます。関係ない動画を再生したままにすると
 デコードが重なって重くなるためです。
+
+**書き出しでも `syncVideos()` を呼ぶこと。** 書き出しは録画用の別ループで
+動いていて、`renderFrame()` だけでは動画が止まったコマのまま録画されます。
+`e2e-export-video` で、書き出した動画のコマが実際に変化しているかを
+確認しています（判定は色の開きで見ます。動画の圧縮で ±2 程度はぶれるため、
+値が違う＝動いている、とは言えません）。
 
 ## スマホでの動作
 
