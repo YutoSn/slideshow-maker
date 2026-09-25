@@ -145,6 +145,7 @@ select, input[type='number'] {
 .field--inline input { width: auto; accent-color: var(--accent); }
 
 .selected { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+.selected h3 { display: flex; align-items: center; gap: 8px; }
 .selected .row { margin-bottom: 8px; }
 
 .stage__frame { display: block; }
@@ -196,6 +197,10 @@ select, input[type='number'] {
 .segment img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.55; transition: opacity 0.15s; }
 .segment--active img { opacity: 1; }
 /* 選択・ドロップ先は内側の影で示す。枠線だと配置が 1px ずれるため */
+.segment--anchor::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: #ffd166; z-index: 2;
+}
 .segment--selected { box-shadow: inset 0 0 0 2px var(--accent); }
 .segment--drop { box-shadow: inset 0 0 0 2px #7dffb0; background: rgba(125, 255, 176, 0.22); }
 .segment__index {
@@ -232,6 +237,15 @@ select, input[type='number'] {
 
 .stage--pannable { cursor: grab; touch-action: none; }
 .stage--pannable:active { cursor: grabbing; }
+.stage__current {
+  display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap;
+  margin: 8px 0 0; font-size: 13px;
+}
+.stage__current .muted { font-size: 12px; }
+.stage__badge {
+  background: var(--accent); border-radius: 5px;
+  padding: 1px 7px; font-size: 12px; font-weight: 600; color: #08111f;
+}
 .stage__hint { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .tray__item--drop { outline: 2px solid #7dffb0; outline-offset: -2px; }
 .linkish {
@@ -271,6 +285,8 @@ select, input[type='number'] {
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 3px 8px;
 }
+.bpm-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bpm__pivot { font-size: 11.5px; }
 .bpm__label {
   font-size: 11px; letter-spacing: 0.06em; color: var(--muted);
   margin-right: 3px;

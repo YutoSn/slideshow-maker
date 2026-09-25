@@ -30,6 +30,7 @@ import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
 import { emitPlayhead, onPlayhead } from './engine/playhead';
 import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
+import { rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -60,19 +61,6 @@ function previewSizeFor(cssWidth: number): { width: number; height: number } {
   else if (wanted <= 1100 || cores <= 6) width = 960;
 
   return { width, height: Math.round((width * 9) / 16) };
-}
-
-/** ビート格子を BPM だけ差し替えて作り直す（手動補正用）。 */
-function rebuildWithBpm(analysis: BeatAnalysis, bpm: number): BeatAnalysis {
-  const period = 60 / bpm;
-  const beats: number[] = [];
-  for (let t = analysis.offset; t < analysis.duration; t += period) beats.push(t);
-  return {
-    ...analysis,
-    bpm,
-    beats,
-    downbeats: beats.filter((_, i) => i % 4 === 0),
-  };
 }
 
 export default function App() {
@@ -251,23 +239,68 @@ export default function App() {
     return () => video.removeEventListener('seeked', redraw);
   }, [renderContext, playing, currentTime, transitionSeconds]);
 
+  const seek = useCallback((time: number) => {
+    const audio = audioRef.current;
+    if (audio) audio.currentTime = time;
+    playheadRef.current = time;
+    emitPlayhead(time);
+    setCurrentTime(time);
+  }, []);
+
   const patchOverride = useCallback((segmentId: string, patch: SegmentOverride) => {
     setOverrides((current) => ({ ...current, [segmentId]: { ...current[segmentId], ...patch } }));
   }, []);
+
+  /**
+   * カットを選ぶ。選択とプレビューの位置は必ずそろえる。
+   * 片方だけ動かすと、映っていない別のカットを調整してしまう。
+   *
+   * カットの先頭はクロスフェードの開始点で、まだ前の写真が
+   * 不透明のまま。切り替わりきった位置へ送って、選んだ写真を映す。
+   */
+  const selectCut = useCallback(
+    (segment: Segment) => {
+      const settled = segment.start + transitionSeconds;
+      const middle = (segment.start + segment.end) / 2;
+      setSelectedId(segment.id);
+      seek(Math.min(Math.max(settled, segment.start), Math.max(middle, segment.start)));
+    },
+    [transitionSeconds, seek],
+  );
+
+  const selectCutById = useCallback(
+    (id: string) => {
+      const segment = segments.find((s) => s.id === id);
+      if (segment) selectCut(segment);
+    },
+    [segments, selectCut],
+  );
+
+  // 選択は常に「いまプレビューに映っているカット」に合わせる。
+  // ルーラーのクリックや再生・停止で位置だけが動いても、選択が取り残されない。
+  useEffect(() => {
+    if (segments.length === 0) return;
+    const follow = (time: number) => {
+      const visible = segments[segmentAt(segments, time)];
+      if (visible) setSelectedId((current) => (current === visible.id ? current : visible.id));
+    };
+    if (!playing) {
+      follow(currentTime);
+      return;
+    }
+    // 再生中はカットが変わったときだけ React の状態を動かす
+    return onPlayhead(follow);
+  }, [segments, playing, currentTime]);
 
   /** 写真をカットに当てはめる。クリック割り当てでは次のカットへ自動で進む。 */
   const assignPhoto = useCallback(
     (segmentId: string, mediaId: string, advance: boolean) => {
       patchOverride(segmentId, { mediaId });
-      if (!advance) return;
-      setSegments((current) => {
-        const index = current.findIndex((s) => s.id === segmentId);
-        const next = current[index + 1];
-        if (next) setSelectedId(next.id);
-        return current;
-      });
+      const index = segments.findIndex((s) => s.id === segmentId);
+      const target = segments[advance ? index + 1 : index];
+      if (target) selectCut(target);
     },
-    [patchOverride],
+    [patchOverride, segments, selectCut],
   );
 
   /**
@@ -307,6 +340,10 @@ export default function App() {
   const visibleSegment = segments.length > 0 ? segments[segmentAt(segments, currentTime)] : null;
   const visiblePhoto = visibleSegment ? mediaMap.get(visibleSegment.mediaId) : undefined;
   const canPan = visibleSegment?.fit === 'cover' && visiblePhoto !== undefined;
+  // 見せる位置は写真ごとに持つので、同じ写真の別カットにも効く
+  const sharedCuts = visiblePhoto
+    ? segments.filter((s) => s.mediaId === visiblePhoto.id).length
+    : 0;
 
   const panRef = useRef<{
     mediaId: string;
@@ -507,14 +544,6 @@ export default function App() {
     });
   }, [playing]);
 
-  const seek = useCallback((time: number) => {
-    const audio = audioRef.current;
-    if (audio) audio.currentTime = time;
-    playheadRef.current = time;
-    emitPlayhead(time);
-    setCurrentTime(time);
-  }, []);
-
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -558,6 +587,22 @@ export default function App() {
   }, [renderContext, audioFile, quality]);
 
   const selected = segments.find((s) => s.id === selectedId) ?? null;
+  const selectedIndex = selected ? segments.indexOf(selected) : -1;
+
+  /**
+   * BPM を直すときに動かさない位置。選んでいるカットの頭を基準にする。
+   * 見ている場所が流れず、そこから前後に伸び縮みするので合わせやすい。
+   */
+  const gridAnchor = (): GridAnchor | null => {
+    if (!analysis) return null;
+    if (selectedIndex >= 0) {
+      const beatsBefore = segments
+        .slice(0, selectedIndex)
+        .reduce((sum, s) => sum + s.beats, 0);
+      return { time: segments[selectedIndex].start, beatsBefore };
+    }
+    return { time: analysis.downbeats[0] ?? analysis.offset, beatsBefore: 0 };
+  };
   const usedMediaIds = useMemo(
     () => new Set(segments.map((s) => s.mediaId)),
     [segments],
@@ -640,7 +685,7 @@ export default function App() {
               const target = segments[cutIndex];
               if (target) {
                 patchOverride(target.id, { mediaId });
-                setSelectedId(target.id);
+                selectCut(target);
               }
             }}
             onPhotos={addPhotos}
@@ -653,6 +698,7 @@ export default function App() {
           <SettingsPanel
             settings={settings}
             selected={selected}
+            selectedIndex={selectedIndex}
             onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
             onResizeSelected={(delta) => {
               if (!selected) return;
@@ -712,11 +758,20 @@ export default function App() {
               <p className="stage__empty">写真と音源を読み込むとプレビューが始まります</p>
             )}
 
+            {ready && visibleSegment && (
+              <p className="stage__current">
+                <span className="stage__badge">カット {segments.indexOf(visibleSegment) + 1}</span>
+                {visiblePhoto?.name ?? '(素材なし)'}
+                <span className="muted">を表示中 — 「選択中のカット」の調整はこのカットに効きます</span>
+              </p>
+            )}
+
             {ready && visiblePhoto && (
               <p className="stage__hint">
                 {canPan ? (
                   <>
                     プレビューをドラッグすると、この写真のどこを見せるか決められます
+                    {sharedCuts > 1 && `（この写真を使う ${sharedCuts} カットすべてに反映）`}
                     {focus[visiblePhoto.id] && (
                       <>
                         {' '}
@@ -825,13 +880,18 @@ export default function App() {
               playing={playing}
               selectedId={selectedId}
               onSeek={seek}
-              onSelect={setSelectedId}
+              onSelect={selectCutById}
               onDropPhoto={(segmentId, mediaId) => assignPhoto(segmentId, mediaId, false)}
               onReorder={reorderCut}
-              transitionSeconds={transitionSeconds}
-              onBpmOverride={(bpm) =>
-                setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
-              }
+              anchorIndex={selectedIndex}
+              onBpmOverride={(bpm) => {
+                const anchor = gridAnchor();
+                if (anchor) setAnalysis(rebuildGrid(analysis, bpm, anchor));
+              }}
+              onGridShift={(deltaSeconds) => {
+                const anchor = gridAnchor();
+                if (anchor) setAnalysis(shiftGrid(analysis, deltaSeconds, anchor));
+              }}
             />
           )}
         </main>

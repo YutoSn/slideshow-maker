@@ -18,9 +18,11 @@ interface Props {
   onDropPhoto: (segmentId: string, mediaId: string) => void;
   /** カットを掴んで別の位置へ動かす（間のカットは順にずれる） */
   onReorder: (fromIndex: number, toIndex: number) => void;
-  /** トランジションの長さ（秒）。カットを選んだときの表示位置に使う */
-  transitionSeconds: number;
+  /** BPM を直すときに動かさないカット（選択中のカット）の番号。無ければ -1 */
+  anchorIndex: number;
   onBpmOverride: (bpm: number) => void;
+  /** 格子全体を秒単位でずらす */
+  onGridShift: (deltaSeconds: number) => void;
 }
 
 const HEIGHT = 74;
@@ -47,8 +49,9 @@ export default function Timeline({
   onSelect,
   onDropPhoto,
   onReorder,
-  transitionSeconds,
+  anchorIndex,
   onBpmOverride,
+  onGridShift,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -315,7 +318,12 @@ export default function Timeline({
       <div className="toolbar">
         <h2>3. タイムライン</h2>
 
-        <BpmField bpm={analysis.bpm} onChange={onBpmOverride} />
+        <BpmField
+          bpm={analysis.bpm}
+          onChange={onBpmOverride}
+          onShift={onGridShift}
+          anchorLabel={anchorIndex >= 0 ? `カット ${anchorIndex + 1}` : null}
+        />
 
         <div className="toolbar__right">
           <span className="muted">
@@ -376,20 +384,15 @@ export default function Timeline({
                     selectedId === segment.id ? 'segment--selected' : '',
                     dropTarget === segment.id ? 'segment--drop' : '',
                     draggingIndex === index ? 'segment--dragging' : '',
+                    anchorIndex === index ? 'segment--anchor' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
                   style={{ left: `${left}%`, width: `${width}%` }}
                   title={`カット ${index + 1}：${photo?.name ?? '(写真なし)'} — ${segment.beats} 拍（ドラッグで並べ替え）`}
                   draggable
-                  onClick={() => {
-                    onSelect(segment.id);
-                    // カットの先頭はクロスフェードの開始点で、まだ前の写真が
-                    // 不透明のまま。切り替わりきった位置へ送って、選んだ写真を映す
-                    const settled = segment.start + transitionSeconds;
-                    const middle = (segment.start + segment.end) / 2;
-                    onSeek(Math.min(Math.max(settled, segment.start), Math.max(middle, segment.start)));
-                  }}
+                  // 選ぶと、プレビューもそのカットへ送られる（App 側でそろえる）
+                  onClick={() => onSelect(segment.id)}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/cut-index', String(index));
                     e.dataTransfer.effectAllowed = 'move';

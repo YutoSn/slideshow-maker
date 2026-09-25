@@ -12,6 +12,8 @@ import type {
 interface Props {
   settings: ProjectSettings;
   selected: Segment | null;
+  /** 選択中のカットの番号（0 始まり） */
+  selectedIndex: number;
   onChange: (patch: Partial<ProjectSettings>) => void;
   onResizeSelected: (delta: number) => void;
   onTransitionForSelected: (kind: TransitionKind) => void;
@@ -78,6 +80,7 @@ const FILTER_LABELS: Record<LookFilter, string> = {
 export default function SettingsPanel({
   settings,
   selected,
+  selectedIndex,
   onChange,
   onResizeSelected,
   onTransitionForSelected,
@@ -260,7 +263,10 @@ export default function SettingsPanel({
 
 
       <div className="selected">
-        <h3>選択中のカット</h3>
+        <h3>
+          選択中のカット
+          {selected && <span className="stage__badge">カット {selectedIndex + 1}</span>}
+        </h3>
         {selected ? (
           <>
             <p className="muted">
