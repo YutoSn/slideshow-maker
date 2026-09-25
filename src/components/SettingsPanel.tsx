@@ -1,38 +1,29 @@
-import ClipTrim from './ClipTrim';
-import type {
-  BackgroundKind,
-  FitMode,
-  LookFilter,
-  MediaItem,
-  ProjectSettings,
-  Segment,
-  TransitionKind,
-} from '../engine/types';
+import { FIT_LABELS, TRANSITION_LABELS } from './labels';
+import type { BackgroundKind, FitMode, LookFilter, ProjectSettings } from '../engine/types';
+
+/** 個別に上書きされているカットの数（全体の設定が効かないカット） */
+export interface OverrideCounts {
+  beats: number;
+  transition: number;
+  fit: number;
+  /** 何かしら手編集のあるカット */
+  any: number;
+}
 
 interface Props {
   settings: ProjectSettings;
-  selected: Segment | null;
-  /** 選択中のカットの番号（0 始まり） */
-  selectedIndex: number;
+  /** 全体の設定が効くカットの総数 */
+  cutCount: number;
+  overrides: OverrideCounts;
   onChange: (patch: Partial<ProjectSettings>) => void;
-  onResizeSelected: (delta: number) => void;
-  onTransitionForSelected: (kind: TransitionKind) => void;
-  /** 選択中のカットの手編集を取り消し、自動割り当てに戻す */
-  onFitForSelected: (fit: FitMode) => void;
-  /** 選択中のカットが使っている素材（動画なら開始位置を出す） */
-  selectedMedia: MediaItem | null;
-  beatSeconds: number;
-  onVideoStartForSelected: (videoStart: number) => void;
-  onVideoRateForSelected: (rate: number) => void;
-  onClearOverride: () => void;
-  hasOverrides: boolean;
   onClearAllOverrides: () => void;
 }
 
-const FIT_LABELS: Record<FitMode, string> = {
-  cover: '画面いっぱい（はみ出しは切れる）',
-  contain: '全体を収める（余白ができる）',
-};
+/** 全体の設定のうち、個別の手編集が優先されているカットがあることを示す */
+function Overridden({ count }: { count: number }) {
+  if (count === 0) return null;
+  return <em className="overridden">{count} カットは個別設定が優先</em>;
+}
 
 const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
   blur: '写真をぼかして敷く',
@@ -40,33 +31,6 @@ const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
   white: '白',
   color: '好きな色',
 };
-
-const TRANSITION_LABELS: Record<TransitionKind | 'mixed', string> = {
-  mixed: 'おまかせ（混在）',
-  crossfade: 'クロスフェード',
-  slide: 'スライド（横）',
-  slideUp: 'スライド（縦）',
-  zoom: 'ズーム',
-  whip: 'フラッシュ（白）',
-  dipBlack: '暗転',
-  wipe: 'ワイプ',
-  circle: 'サークル',
-  spin: 'スピン',
-  blur: 'ブラー',
-};
-
-const TRANSITION_KINDS: TransitionKind[] = [
-  'crossfade',
-  'slide',
-  'slideUp',
-  'zoom',
-  'whip',
-  'dipBlack',
-  'wipe',
-  'circle',
-  'spin',
-  'blur',
-];
 
 const FILTER_LABELS: Record<LookFilter, string> = {
   none: 'そのまま',
@@ -79,28 +43,29 @@ const FILTER_LABELS: Record<LookFilter, string> = {
 
 export default function SettingsPanel({
   settings,
-  selected,
-  selectedIndex,
+  cutCount,
+  overrides,
   onChange,
-  onResizeSelected,
-  onTransitionForSelected,
-  onFitForSelected,
-  selectedMedia,
-  beatSeconds,
-  onVideoStartForSelected,
-  onVideoRateForSelected,
-  onClearOverride,
-  hasOverrides,
   onClearAllOverrides,
 }: Props) {
   return (
-    <section className="panel">
-      <h2>2. 見せ方を決める</h2>
+    <section className="panel panel--global">
+      <div className="global__head">
+        <h2>2. 全体の見せ方</h2>
+        <span className="global__scope">
+          {cutCount > 0 ? `全 ${cutCount} カット共通` : 'すべてのカット共通'}
+        </span>
+      </div>
+      <p className="global__note">
+        ここは全カットに効きます。1 カットだけ変えるときは、タイムラインでカットを選んで
+        プレビューの下の「このカットだけ」で調整します。
+      </p>
 
       <label className="field">
         <span>
           1 枚あたりの拍数<b>{settings.beatsPerPhoto} 拍</b>
         </span>
+        <Overridden count={overrides.beats} />
         <input
           type="range"
           min={1}
@@ -197,6 +162,7 @@ export default function SettingsPanel({
 
       <label className="field">
         <span>写真の収め方（全体）</span>
+        <Overridden count={overrides.fit} />
         <select
           value={settings.fit}
           onChange={(e) => onChange({ fit: e.target.value as FitMode })}
@@ -240,6 +206,7 @@ export default function SettingsPanel({
 
       <label className="field">
         <span>トランジション</span>
+        <Overridden count={overrides.transition} />
         <select
           value={settings.transition}
           onChange={(e) => onChange({ transition: e.target.value as ProjectSettings['transition'] })}
@@ -261,77 +228,13 @@ export default function SettingsPanel({
         <span>写真の順番をシャッフルする</span>
       </label>
 
-
-      <div className="selected">
-        <h3>
-          選択中のカット
-          {selected && <span className="stage__badge">カット {selectedIndex + 1}</span>}
-        </h3>
-        {selected ? (
-          <>
-            <p className="muted">
-              {selected.beats} 拍（{(selected.end - selected.start).toFixed(2)} 秒）
-            </p>
-            <div className="row">
-              <button type="button" onClick={() => onResizeSelected(-1)}>
-                − 1 拍
-              </button>
-              <button type="button" onClick={() => onResizeSelected(1)}>
-                + 1 拍
-              </button>
-            </div>
-            <select
-              value={selected.transition}
-              onChange={(e) => onTransitionForSelected(e.target.value as TransitionKind)}
-            >
-              {TRANSITION_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {TRANSITION_LABELS[kind]}
-                </option>
-              ))}
-            </select>
-            <label className="field field--stacked">
-              <span>このカットの収め方</span>
-              <select
-                value={selected.fit}
-                onChange={(e) => onFitForSelected(e.target.value as FitMode)}
-              >
-                {(Object.keys(FIT_LABELS) as FitMode[]).map((mode) => (
-                  <option key={mode} value={mode}>
-                    {FIT_LABELS[mode]}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {selectedMedia?.kind === 'video' && (
-              <ClipTrim
-                segment={selected}
-                item={selectedMedia}
-                beatSeconds={beatSeconds}
-                onChange={onVideoStartForSelected}
-                onRateChange={onVideoRateForSelected}
-              />
-            )}
-
-            <div className="row">
-              <button type="button" onClick={onClearOverride}>
-                このカットを自動に戻す
-              </button>
-            </div>
-          </>
-        ) : (
-          <p className="muted">タイムラインのカットを選ぶと個別に調整できます</p>
-        )}
-
-        {hasOverrides && (
-          <div className="row">
-            <button type="button" onClick={onClearAllOverrides}>
-              手編集をすべて取り消す
-            </button>
-          </div>
-        )}
-      </div>
+      {overrides.any > 0 && (
+        <div className="row">
+          <button type="button" onClick={onClearAllOverrides}>
+            手編集をすべて取り消す（{overrides.any} カット）
+          </button>
+        </div>
+      )}
     </section>
   );
 }

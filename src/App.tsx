@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import MediaPool from './components/MediaPool';
 import ProjectPanel from './components/ProjectPanel';
+import CutPanel from './components/CutPanel';
+import { useEditHistory } from './useEditHistory';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
@@ -75,6 +77,19 @@ export default function App() {
   // 写真ごとの「どこを見せるか」。プレビューのドラッグで決める
   const [focus, setFocus] = useState<Record<string, PhotoFocus>>({});
 
+  // 元に戻す / やり直すの対象。ここに挙げた state の変更はすべて履歴に積まれる
+  const edits = useEditHistory(
+    { photos, analysis, settings, overrides, focus },
+    (snapshot) => {
+      setPhotos(snapshot.photos);
+      setAnalysis(snapshot.analysis);
+      setSettings(snapshot.settings);
+      setOverrides(snapshot.overrides);
+      setFocus(snapshot.focus);
+    },
+  );
+  const resetHistory = edits.reset;
+
   // --- プロジェクトの保存 ---
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState('無題のプロジェクト');
@@ -140,14 +155,18 @@ export default function App() {
     setError(null);
     try {
       const buffer = await decodeAudioFile(file);
-      setAnalysis(await analyzeInWorker(buffer));
+      const result = await analyzeInWorker(buffer);
+      // 古い曲の拍に戻せても意味がないので、音源を替えたら履歴はここから
+      resetHistory({ analysis: result });
+      setAnalysis(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '音源を解析できませんでした');
+      resetHistory({ analysis: null });
       setAnalysis(null);
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [resetHistory]);
 
   // 素材か設定が変わったら組み直し、その上にカット単位の手編集を重ねる。
   // こうすると「1 枚あたりの拍数」を変えても割り当てが消えない。
@@ -434,10 +453,19 @@ export default function App() {
   const applyProject = useCallback(
     async (project: StoredProject) => {
       const loaded = await photosFromFiles(project.photos);
+      const restoredSettings = normalizeSettings(project.settings);
+      // 開いた状態を起点にする（前のプロジェクトへは戻さない）
+      resetHistory({
+        photos: loaded,
+        analysis: project.analysis,
+        settings: restoredSettings,
+        overrides: project.overrides,
+        focus: project.focus,
+      });
       setPhotos(loaded);
       setAudioFile(project.audio);
       setAnalysis(project.analysis);
-      setSettings(normalizeSettings(project.settings));
+      setSettings(restoredSettings);
       setOverrides(project.overrides);
       setFocus(project.focus);
       setProjectId(project.id);
@@ -446,7 +474,7 @@ export default function App() {
       setSelectedId(null);
       setCurrentTime(0);
     },
-    [photosFromFiles],
+    [photosFromFiles, resetHistory],
   );
 
   const persist = useCallback(async () => {
@@ -515,11 +543,15 @@ export default function App() {
   }, [projectId, persist]);
 
   const startNewProject = useCallback(() => {
-    setPhotos([]);
+    const noPhotos: MediaItem[] = [];
+    const noOverrides: Record<string, SegmentOverride> = {};
+    const noFocus: Record<string, PhotoFocus> = {};
+    resetHistory({ photos: noPhotos, analysis: null, overrides: noOverrides, focus: noFocus });
+    setPhotos(noPhotos);
     setAudioFile(null);
     setAnalysis(null);
-    setOverrides({});
-    setFocus({});
+    setOverrides(noOverrides);
+    setFocus(noFocus);
     setSegments([]);
     setSelectedId(null);
     setCurrentTime(0);
@@ -529,7 +561,7 @@ export default function App() {
     setRestored(null);
     photoFiles.current.clear();
     void setLastOpenedId(null);
-  }, []);
+  }, [resetHistory]);
 
   // 再生中の時刻表示は、React を通さず書き換える
   useEffect(() => {
@@ -552,6 +584,35 @@ export default function App() {
   }, []);
 
   togglePlayRef.current = togglePlay;
+
+  // Ctrl/⌘ + Z で元に戻す、Ctrl/⌘ + Shift + Z か Ctrl + Y でやり直す。
+  // 文字入力欄では、その欄の文字の取り消しを優先する。
+  const { undo, redo } = edits;
+  useEffect(() => {
+    // 書き出し中は描画中の内容を変えない
+    if (exportProgress !== null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement && (target.type === 'text' || target.type === 'number'))
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, exportProgress]);
 
   const handleExport = useCallback(async () => {
     if (!renderContext || !audioFile) return;
@@ -603,6 +664,19 @@ export default function App() {
     }
     return { time: analysis.downbeats[0] ?? analysis.offset, beatsBefore: 0 };
   };
+  // 全体の設定が効かず、個別の手編集が優先されているカットの数
+  const overrideCounts = useMemo(() => {
+    const counts = { beats: 0, transition: 0, fit: 0, any: 0 };
+    for (const segment of segments) {
+      const override = overrides[segment.id];
+      if (!override) continue;
+      counts.any += 1;
+      if (override.beats !== undefined) counts.beats += 1;
+      if (override.transition !== undefined) counts.transition += 1;
+      if (override.fit !== undefined) counts.fit += 1;
+    }
+    return counts;
+  }, [segments, overrides]);
   const usedMediaIds = useMemo(
     () => new Set(segments.map((s) => s.mediaId)),
     [segments],
@@ -616,10 +690,30 @@ export default function App() {
           <h1>Slideshow Maker</h1>
           <p>写真を音楽のビートに合わせて切り替える、ブラウザ完結のスライドショー作成ツール</p>
         </div>
-        <a className="app__manual" href="./manual.html" target="_blank" rel="noopener noreferrer">
-          使い方マニュアル
-          <span aria-hidden="true">↗</span>
-        </a>
+        <div className="app__tools">
+          <div className="history" role="group" aria-label="編集の履歴">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!edits.canUndo || exportProgress !== null}
+              title="元に戻す（Ctrl / ⌘ + Z）"
+            >
+              <span aria-hidden="true">↶</span> 元に戻す
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!edits.canRedo || exportProgress !== null}
+              title="やり直す（Ctrl / ⌘ + Shift + Z）"
+            >
+              <span aria-hidden="true">↷</span> やり直す
+            </button>
+          </div>
+          <a className="app__manual" href="./manual.html" target="_blank" rel="noopener noreferrer">
+            使い方マニュアル
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
       </header>
 
       {error && (
@@ -697,40 +791,9 @@ export default function App() {
 
           <SettingsPanel
             settings={settings}
-            selected={selected}
-            selectedIndex={selectedIndex}
+            cutCount={segments.length}
+            overrides={overrideCounts}
             onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-            onResizeSelected={(delta) => {
-              if (!selected) return;
-              patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) });
-            }}
-            onTransitionForSelected={(kind: TransitionKind) => {
-              if (!selected) return;
-              patchOverride(selected.id, { transition: kind });
-            }}
-            onFitForSelected={(fit: FitMode) => {
-              if (!selected) return;
-              patchOverride(selected.id, { fit });
-            }}
-            selectedMedia={selected ? (mediaMap.get(selected.mediaId) ?? null) : null}
-            beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
-            onVideoStartForSelected={(videoStart) => {
-              if (!selected) return;
-              patchOverride(selected.id, { videoStart });
-            }}
-            onVideoRateForSelected={(videoRate) => {
-              if (!selected) return;
-              patchOverride(selected.id, { videoRate });
-            }}
-            onClearOverride={() => {
-              if (!selected) return;
-              setOverrides((current) => {
-                const next = { ...current };
-                delete next[selected.id];
-                return next;
-              });
-            }}
-            hasOverrides={Object.keys(overrides).length > 0}
             onClearAllOverrides={() => setOverrides({})}
           />
         </div>
@@ -756,14 +819,6 @@ export default function App() {
             </div>
             {!ready && (
               <p className="stage__empty">写真と音源を読み込むとプレビューが始まります</p>
-            )}
-
-            {ready && visibleSegment && (
-              <p className="stage__current">
-                <span className="stage__badge">カット {segments.indexOf(visibleSegment) + 1}</span>
-                {visiblePhoto?.name ?? '(素材なし)'}
-                <span className="muted">を表示中 — 「選択中のカット」の調整はこのカットに効きます</span>
-              </p>
             )}
 
             {ready && visiblePhoto && (
@@ -870,6 +925,32 @@ export default function App() {
               </p>
             )}
           </section>
+
+          {ready && selected && (
+            <CutPanel
+              selected={selected}
+              index={selectedIndex}
+              media={mediaMap.get(selected.mediaId) ?? null}
+              beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
+              edited={overrides[selected.id] !== undefined}
+              onResize={(delta) =>
+                patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) })
+              }
+              onTransition={(transition: TransitionKind) =>
+                patchOverride(selected.id, { transition })
+              }
+              onFit={(fit: FitMode) => patchOverride(selected.id, { fit })}
+              onVideoStart={(videoStart) => patchOverride(selected.id, { videoStart })}
+              onVideoRate={(videoRate) => patchOverride(selected.id, { videoRate })}
+              onReset={() =>
+                setOverrides((current) => {
+                  const next = { ...current };
+                  delete next[selected.id];
+                  return next;
+                })
+              }
+            />
+          )}
 
           {analysis && (
             <Timeline

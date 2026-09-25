@@ -18,8 +18,14 @@ await page.setInputFiles('input[type=file][multiple]', photos);
 await page.setInputFiles('input[type=file][accept="audio/*"]', audio);
 await page.waitForSelector('.segments .segment', { timeout: 120000 });
 
-const shown = async () => (await page.textContent('.stage__current .stage__badge'))?.trim();
-const picked = async () => (await page.textContent('.selected h3 .stage__badge'))?.trim();
+// プレビューに映っているカット（タイムラインで再生位置にあるカット）
+const shown = () =>
+  page.evaluate(() => {
+    const cuts = [...document.querySelectorAll('.segments .segment')];
+    return `カット ${cuts.findIndex((el) => el.classList.contains('segment--active')) + 1}`;
+  });
+// 「このカットだけ」の調整が効くカット
+const picked = async () => (await page.textContent('.panel--cut .stage__badge'))?.trim();
 let failed = false;
 const expect = (label, actual, wanted) => {
   const ok = actual === wanted;
