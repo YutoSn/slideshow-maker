@@ -24,7 +24,7 @@ page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto('http://127.0.0.1:5173/');
 await page.waitForSelector('.dropzone');
 await page.setInputFiles('input[type=file][multiple]', photos);
-await page.setInputFiles('input[type=file][accept="audio/*"]', resolve('assets/ohayou.mp3'));
+await page.setInputFiles('input[type=file][accept="audio/*"]', resolve(process.env.AUDIO ?? 'assets/ohayou.mp3'));
 await page.waitForSelector('.segments .segment', { timeout: 120000 });
 
 console.log('meta:', await page.textContent('.toolbar__right .muted'));
@@ -36,12 +36,12 @@ if (quality) {
 }
 
 const downloadPromise = page.waitForEvent('download', { timeout: 15 * 60 * 1000 });
-await page.click('button.primary');
+await page.click('.transport button.primary');
 console.log('recording started (realtime)…');
 
 const progress = setInterval(async () => {
   try {
-    const label = await page.textContent('button.primary');
+    const label = await page.textContent('.transport button.primary');
     console.log(new Date().toISOString().slice(11, 19), label?.trim());
   } catch { /* ページ遷移中などは無視 */ }
 }, 30000);

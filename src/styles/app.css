@@ -6,6 +6,7 @@
   --text: #e8e8f0;
   --muted: #9a9ab0;
   --accent: #6ea8ff;
+  --accent-tint: rgba(110, 168, 255, 0.07);
   color-scheme: dark;
 }
 
@@ -51,6 +52,9 @@ select, input[type='number'] {
 }
 .app__head h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
 .app__head p { margin: 4px 0 0; color: var(--muted); }
+.app__tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.history { display: flex; gap: 6px; }
+.history button { font-size: 13px; padding: 7px 12px; white-space: nowrap; }
 .app__manual {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--line); border-radius: 8px;
@@ -144,8 +148,44 @@ select, input[type='number'] {
 .field--inline > span { margin: 0; font-size: 13px; color: var(--text); }
 .field--inline input { width: auto; accent-color: var(--accent); }
 
-.selected { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
-.selected .row { margin-bottom: 8px; }
+/* ---------- 全体の設定と、このカットだけの設定 ----------
+   取り違えないよう、置き場所と色をはっきり分ける。
+   全体 = いつものパネル色、このカットだけ = アクセント色の枠と地。 */
+
+.global__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.global__scope {
+  font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap;
+}
+.global__note { margin: -4px 0 14px; font-size: 11.5px; color: var(--muted); }
+.overridden {
+  display: block; margin: -2px 0 5px; font-size: 11px; font-style: normal; color: #ffc46b;
+}
+
+.panel--cut {
+  border-color: var(--accent);
+  background: linear-gradient(0deg, var(--accent-tint), var(--accent-tint)), var(--panel);
+  padding: 12px 14px;
+}
+.cut__head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cut__thumb { width: 52px; height: 34px; object-fit: cover; border-radius: 5px; flex: none; }
+.cut__title { min-width: 0; flex: 1; }
+.cut__scope { font-size: 11px; color: var(--accent); letter-spacing: 0.04em; font-weight: 600; }
+.panel--cut h2 {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0;
+}
+.cut__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cut__reset { flex: none; font-size: 12px; padding: 5px 10px; }
+.cut__controls {
+  display: grid; gap: 10px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.cut__field { display: block; min-width: 0; }
+.cut__field > span { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+.cut__field > span b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.cut__buttons { display: flex; gap: 6px; }
+.cut__buttons button { flex: 1; padding: 5px 8px; }
 
 .stage__frame { display: block; }
 .stage { width: 100%; aspect-ratio: 16 / 9; display: block; background: #07070b; border-radius: 8px; cursor: pointer; }
@@ -196,6 +236,10 @@ select, input[type='number'] {
 .segment img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.55; transition: opacity 0.15s; }
 .segment--active img { opacity: 1; }
 /* 選択・ドロップ先は内側の影で示す。枠線だと配置が 1px ずれるため */
+.segment--anchor::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: #ffd166; z-index: 2;
+}
 .segment--selected { box-shadow: inset 0 0 0 2px var(--accent); }
 .segment--drop { box-shadow: inset 0 0 0 2px #7dffb0; background: rgba(125, 255, 176, 0.22); }
 .segment__index {
@@ -232,6 +276,11 @@ select, input[type='number'] {
 
 .stage--pannable { cursor: grab; touch-action: none; }
 .stage--pannable:active { cursor: grabbing; }
+.stage__badge {
+  white-space: nowrap;
+  background: var(--accent); border-radius: 5px;
+  padding: 1px 7px; font-size: 12px; font-weight: 600; color: #08111f;
+}
 .stage__hint { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .tray__item--drop { outline: 2px solid #7dffb0; outline-offset: -2px; }
 .linkish {
@@ -271,6 +320,8 @@ select, input[type='number'] {
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 3px 8px;
 }
+.bpm-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bpm__pivot { font-size: 11.5px; }
 .bpm__label {
   font-size: 11px; letter-spacing: 0.06em; color: var(--muted);
   margin-right: 3px;

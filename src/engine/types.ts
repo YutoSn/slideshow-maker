@@ -5,8 +5,11 @@ export interface MediaItem {
   name: string;
   url: string;
   kind: MediaKind;
-  /** canvas に描ける実体。写真なら img、動画なら video */
-  element: HTMLImageElement | HTMLVideoElement;
+  /**
+   * canvas に描ける実体。写真なら img、動画なら video。
+   * 書き出しでは、写真を縮小・デコード済みの ImageBitmap に差し替える。
+   */
+  element: HTMLImageElement | HTMLVideoElement | ImageBitmap;
   width: number;
   height: number;
   /** 動画の長さ（秒）。写真は 0 */

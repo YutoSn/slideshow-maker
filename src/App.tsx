@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import MediaPool from './components/MediaPool';
 import ProjectPanel from './components/ProjectPanel';
+import CutPanel from './components/CutPanel';
+import { useEditHistory } from './useEditHistory';
 import SettingsPanel from './components/SettingsPanel';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
@@ -30,6 +32,7 @@ import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
 import { emitPlayhead, onPlayhead } from './engine/playhead';
 import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
+import { rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -62,19 +65,6 @@ function previewSizeFor(cssWidth: number): { width: number; height: number } {
   return { width, height: Math.round((width * 9) / 16) };
 }
 
-/** ビート格子を BPM だけ差し替えて作り直す（手動補正用）。 */
-function rebuildWithBpm(analysis: BeatAnalysis, bpm: number): BeatAnalysis {
-  const period = 60 / bpm;
-  const beats: number[] = [];
-  for (let t = analysis.offset; t < analysis.duration; t += period) beats.push(t);
-  return {
-    ...analysis,
-    bpm,
-    beats,
-    downbeats: beats.filter((_, i) => i % 4 === 0),
-  };
-}
-
 export default function App() {
   const [photos, setPhotos] = useState<MediaItem[]>([]);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -86,6 +76,19 @@ export default function App() {
   const [overrides, setOverrides] = useState<Record<string, SegmentOverride>>({});
   // 写真ごとの「どこを見せるか」。プレビューのドラッグで決める
   const [focus, setFocus] = useState<Record<string, PhotoFocus>>({});
+
+  // 元に戻す / やり直すの対象。ここに挙げた state の変更はすべて履歴に積まれる
+  const edits = useEditHistory(
+    { photos, analysis, settings, overrides, focus },
+    (snapshot) => {
+      setPhotos(snapshot.photos);
+      setAnalysis(snapshot.analysis);
+      setSettings(snapshot.settings);
+      setOverrides(snapshot.overrides);
+      setFocus(snapshot.focus);
+    },
+  );
+  const resetHistory = edits.reset;
 
   // --- プロジェクトの保存 ---
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -152,14 +155,18 @@ export default function App() {
     setError(null);
     try {
       const buffer = await decodeAudioFile(file);
-      setAnalysis(await analyzeInWorker(buffer));
+      const result = await analyzeInWorker(buffer);
+      // 古い曲の拍に戻せても意味がないので、音源を替えたら履歴はここから
+      resetHistory({ analysis: result });
+      setAnalysis(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '音源を解析できませんでした');
+      resetHistory({ analysis: null });
       setAnalysis(null);
     } finally {
       setAnalyzing(false);
     }
-  }, []);
+  }, [resetHistory]);
 
   // 素材か設定が変わったら組み直し、その上にカット単位の手編集を重ねる。
   // こうすると「1 枚あたりの拍数」を変えても割り当てが消えない。
@@ -251,23 +258,68 @@ export default function App() {
     return () => video.removeEventListener('seeked', redraw);
   }, [renderContext, playing, currentTime, transitionSeconds]);
 
+  const seek = useCallback((time: number) => {
+    const audio = audioRef.current;
+    if (audio) audio.currentTime = time;
+    playheadRef.current = time;
+    emitPlayhead(time);
+    setCurrentTime(time);
+  }, []);
+
   const patchOverride = useCallback((segmentId: string, patch: SegmentOverride) => {
     setOverrides((current) => ({ ...current, [segmentId]: { ...current[segmentId], ...patch } }));
   }, []);
+
+  /**
+   * カットを選ぶ。選択とプレビューの位置は必ずそろえる。
+   * 片方だけ動かすと、映っていない別のカットを調整してしまう。
+   *
+   * カットの先頭はクロスフェードの開始点で、まだ前の写真が
+   * 不透明のまま。切り替わりきった位置へ送って、選んだ写真を映す。
+   */
+  const selectCut = useCallback(
+    (segment: Segment) => {
+      const settled = segment.start + transitionSeconds;
+      const middle = (segment.start + segment.end) / 2;
+      setSelectedId(segment.id);
+      seek(Math.min(Math.max(settled, segment.start), Math.max(middle, segment.start)));
+    },
+    [transitionSeconds, seek],
+  );
+
+  const selectCutById = useCallback(
+    (id: string) => {
+      const segment = segments.find((s) => s.id === id);
+      if (segment) selectCut(segment);
+    },
+    [segments, selectCut],
+  );
+
+  // 選択は常に「いまプレビューに映っているカット」に合わせる。
+  // ルーラーのクリックや再生・停止で位置だけが動いても、選択が取り残されない。
+  useEffect(() => {
+    if (segments.length === 0) return;
+    const follow = (time: number) => {
+      const visible = segments[segmentAt(segments, time)];
+      if (visible) setSelectedId((current) => (current === visible.id ? current : visible.id));
+    };
+    if (!playing) {
+      follow(currentTime);
+      return;
+    }
+    // 再生中はカットが変わったときだけ React の状態を動かす
+    return onPlayhead(follow);
+  }, [segments, playing, currentTime]);
 
   /** 写真をカットに当てはめる。クリック割り当てでは次のカットへ自動で進む。 */
   const assignPhoto = useCallback(
     (segmentId: string, mediaId: string, advance: boolean) => {
       patchOverride(segmentId, { mediaId });
-      if (!advance) return;
-      setSegments((current) => {
-        const index = current.findIndex((s) => s.id === segmentId);
-        const next = current[index + 1];
-        if (next) setSelectedId(next.id);
-        return current;
-      });
+      const index = segments.findIndex((s) => s.id === segmentId);
+      const target = segments[advance ? index + 1 : index];
+      if (target) selectCut(target);
     },
-    [patchOverride],
+    [patchOverride, segments, selectCut],
   );
 
   /**
@@ -307,6 +359,10 @@ export default function App() {
   const visibleSegment = segments.length > 0 ? segments[segmentAt(segments, currentTime)] : null;
   const visiblePhoto = visibleSegment ? mediaMap.get(visibleSegment.mediaId) : undefined;
   const canPan = visibleSegment?.fit === 'cover' && visiblePhoto !== undefined;
+  // 見せる位置は写真ごとに持つので、同じ写真の別カットにも効く
+  const sharedCuts = visiblePhoto
+    ? segments.filter((s) => s.mediaId === visiblePhoto.id).length
+    : 0;
 
   const panRef = useRef<{
     mediaId: string;
@@ -397,10 +453,19 @@ export default function App() {
   const applyProject = useCallback(
     async (project: StoredProject) => {
       const loaded = await photosFromFiles(project.photos);
+      const restoredSettings = normalizeSettings(project.settings);
+      // 開いた状態を起点にする（前のプロジェクトへは戻さない）
+      resetHistory({
+        photos: loaded,
+        analysis: project.analysis,
+        settings: restoredSettings,
+        overrides: project.overrides,
+        focus: project.focus,
+      });
       setPhotos(loaded);
       setAudioFile(project.audio);
       setAnalysis(project.analysis);
-      setSettings(normalizeSettings(project.settings));
+      setSettings(restoredSettings);
       setOverrides(project.overrides);
       setFocus(project.focus);
       setProjectId(project.id);
@@ -409,7 +474,7 @@ export default function App() {
       setSelectedId(null);
       setCurrentTime(0);
     },
-    [photosFromFiles],
+    [photosFromFiles, resetHistory],
   );
 
   const persist = useCallback(async () => {
@@ -478,11 +543,15 @@ export default function App() {
   }, [projectId, persist]);
 
   const startNewProject = useCallback(() => {
-    setPhotos([]);
+    const noPhotos: MediaItem[] = [];
+    const noOverrides: Record<string, SegmentOverride> = {};
+    const noFocus: Record<string, PhotoFocus> = {};
+    resetHistory({ photos: noPhotos, analysis: null, overrides: noOverrides, focus: noFocus });
+    setPhotos(noPhotos);
     setAudioFile(null);
     setAnalysis(null);
-    setOverrides({});
-    setFocus({});
+    setOverrides(noOverrides);
+    setFocus(noFocus);
     setSegments([]);
     setSelectedId(null);
     setCurrentTime(0);
@@ -492,7 +561,7 @@ export default function App() {
     setRestored(null);
     photoFiles.current.clear();
     void setLastOpenedId(null);
-  }, []);
+  }, [resetHistory]);
 
   // 再生中の時刻表示は、React を通さず書き換える
   useEffect(() => {
@@ -507,14 +576,6 @@ export default function App() {
     });
   }, [playing]);
 
-  const seek = useCallback((time: number) => {
-    const audio = audioRef.current;
-    if (audio) audio.currentTime = time;
-    playheadRef.current = time;
-    emitPlayhead(time);
-    setCurrentTime(time);
-  }, []);
-
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -523,6 +584,35 @@ export default function App() {
   }, []);
 
   togglePlayRef.current = togglePlay;
+
+  // Ctrl/⌘ + Z で元に戻す、Ctrl/⌘ + Shift + Z か Ctrl + Y でやり直す。
+  // 文字入力欄では、その欄の文字の取り消しを優先する。
+  const { undo, redo } = edits;
+  useEffect(() => {
+    // 書き出し中は描画中の内容を変えない
+    if (exportProgress !== null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement && (target.type === 'text' || target.type === 'number'))
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, exportProgress]);
 
   const handleExport = useCallback(async () => {
     if (!renderContext || !audioFile) return;
@@ -558,6 +648,35 @@ export default function App() {
   }, [renderContext, audioFile, quality]);
 
   const selected = segments.find((s) => s.id === selectedId) ?? null;
+  const selectedIndex = selected ? segments.indexOf(selected) : -1;
+
+  /**
+   * BPM を直すときに動かさない位置。選んでいるカットの頭を基準にする。
+   * 見ている場所が流れず、そこから前後に伸び縮みするので合わせやすい。
+   */
+  const gridAnchor = (): GridAnchor | null => {
+    if (!analysis) return null;
+    if (selectedIndex >= 0) {
+      const beatsBefore = segments
+        .slice(0, selectedIndex)
+        .reduce((sum, s) => sum + s.beats, 0);
+      return { time: segments[selectedIndex].start, beatsBefore };
+    }
+    return { time: analysis.downbeats[0] ?? analysis.offset, beatsBefore: 0 };
+  };
+  // 全体の設定が効かず、個別の手編集が優先されているカットの数
+  const overrideCounts = useMemo(() => {
+    const counts = { beats: 0, transition: 0, fit: 0, any: 0 };
+    for (const segment of segments) {
+      const override = overrides[segment.id];
+      if (!override) continue;
+      counts.any += 1;
+      if (override.beats !== undefined) counts.beats += 1;
+      if (override.transition !== undefined) counts.transition += 1;
+      if (override.fit !== undefined) counts.fit += 1;
+    }
+    return counts;
+  }, [segments, overrides]);
   const usedMediaIds = useMemo(
     () => new Set(segments.map((s) => s.mediaId)),
     [segments],
@@ -571,10 +690,30 @@ export default function App() {
           <h1>Slideshow Maker</h1>
           <p>写真を音楽のビートに合わせて切り替える、ブラウザ完結のスライドショー作成ツール</p>
         </div>
-        <a className="app__manual" href="./manual.html" target="_blank" rel="noopener noreferrer">
-          使い方マニュアル
-          <span aria-hidden="true">↗</span>
-        </a>
+        <div className="app__tools">
+          <div className="history" role="group" aria-label="編集の履歴">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!edits.canUndo || exportProgress !== null}
+              title="元に戻す（Ctrl / ⌘ + Z）"
+            >
+              <span aria-hidden="true">↶</span> 元に戻す
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!edits.canRedo || exportProgress !== null}
+              title="やり直す（Ctrl / ⌘ + Shift + Z）"
+            >
+              <span aria-hidden="true">↷</span> やり直す
+            </button>
+          </div>
+          <a className="app__manual" href="./manual.html" target="_blank" rel="noopener noreferrer">
+            使い方マニュアル
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
       </header>
 
       {error && (
@@ -640,7 +779,7 @@ export default function App() {
               const target = segments[cutIndex];
               if (target) {
                 patchOverride(target.id, { mediaId });
-                setSelectedId(target.id);
+                selectCut(target);
               }
             }}
             onPhotos={addPhotos}
@@ -652,39 +791,9 @@ export default function App() {
 
           <SettingsPanel
             settings={settings}
-            selected={selected}
+            cutCount={segments.length}
+            overrides={overrideCounts}
             onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-            onResizeSelected={(delta) => {
-              if (!selected) return;
-              patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) });
-            }}
-            onTransitionForSelected={(kind: TransitionKind) => {
-              if (!selected) return;
-              patchOverride(selected.id, { transition: kind });
-            }}
-            onFitForSelected={(fit: FitMode) => {
-              if (!selected) return;
-              patchOverride(selected.id, { fit });
-            }}
-            selectedMedia={selected ? (mediaMap.get(selected.mediaId) ?? null) : null}
-            beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
-            onVideoStartForSelected={(videoStart) => {
-              if (!selected) return;
-              patchOverride(selected.id, { videoStart });
-            }}
-            onVideoRateForSelected={(videoRate) => {
-              if (!selected) return;
-              patchOverride(selected.id, { videoRate });
-            }}
-            onClearOverride={() => {
-              if (!selected) return;
-              setOverrides((current) => {
-                const next = { ...current };
-                delete next[selected.id];
-                return next;
-              });
-            }}
-            hasOverrides={Object.keys(overrides).length > 0}
             onClearAllOverrides={() => setOverrides({})}
           />
         </div>
@@ -717,6 +826,7 @@ export default function App() {
                 {canPan ? (
                   <>
                     プレビューをドラッグすると、この写真のどこを見せるか決められます
+                    {sharedCuts > 1 && `（この写真を使う ${sharedCuts} カットすべてに反映）`}
                     {focus[visiblePhoto.id] && (
                       <>
                         {' '}
@@ -816,6 +926,32 @@ export default function App() {
             )}
           </section>
 
+          {ready && selected && (
+            <CutPanel
+              selected={selected}
+              index={selectedIndex}
+              media={mediaMap.get(selected.mediaId) ?? null}
+              beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
+              edited={overrides[selected.id] !== undefined}
+              onResize={(delta) =>
+                patchOverride(selected.id, { beats: Math.max(1, selected.beats + delta) })
+              }
+              onTransition={(transition: TransitionKind) =>
+                patchOverride(selected.id, { transition })
+              }
+              onFit={(fit: FitMode) => patchOverride(selected.id, { fit })}
+              onVideoStart={(videoStart) => patchOverride(selected.id, { videoStart })}
+              onVideoRate={(videoRate) => patchOverride(selected.id, { videoRate })}
+              onReset={() =>
+                setOverrides((current) => {
+                  const next = { ...current };
+                  delete next[selected.id];
+                  return next;
+                })
+              }
+            />
+          )}
+
           {analysis && (
             <Timeline
               analysis={analysis}
@@ -825,13 +961,18 @@ export default function App() {
               playing={playing}
               selectedId={selectedId}
               onSeek={seek}
-              onSelect={setSelectedId}
+              onSelect={selectCutById}
               onDropPhoto={(segmentId, mediaId) => assignPhoto(segmentId, mediaId, false)}
               onReorder={reorderCut}
-              transitionSeconds={transitionSeconds}
-              onBpmOverride={(bpm) =>
-                setAnalysis((current) => (current ? rebuildWithBpm(current, bpm) : current))
-              }
+              anchorIndex={selectedIndex}
+              onBpmOverride={(bpm) => {
+                const anchor = gridAnchor();
+                if (anchor) setAnalysis(rebuildGrid(analysis, bpm, anchor));
+              }}
+              onGridShift={(deltaSeconds) => {
+                const anchor = gridAnchor();
+                if (anchor) setAnalysis(shiftGrid(analysis, deltaSeconds, anchor));
+              }}
             />
           )}
         </main>
