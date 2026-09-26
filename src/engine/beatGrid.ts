@@ -1,4 +1,5 @@
 import type { BeatAnalysis } from './beatDetect';
+import { nearestBeatIndex } from './segments';
 
 /**
  * 手直し用のビート格子の作り直し。
@@ -14,7 +15,7 @@ import type { BeatAnalysis } from './beatDetect';
 export interface GridAnchor {
   /** 動かさずに保つ時刻（秒）。格子はここを必ず通る */
   time: number;
-  /** 最初のカットの頭から、基準の時刻までの拍数 */
+  /** 最初のカットの頭から、基準の時刻までの拍数（基準が最初のカットより前なら負） */
   beatsBefore: number;
 }
 
@@ -40,7 +41,7 @@ export function rebuildGrid(
   }
 
   // 最初のカットを置く拍。基準のカットの頭が動かないように逆算する
-  let first = anchorIndex - Math.max(0, Math.round(anchor.beatsBefore));
+  let first = anchorIndex - Math.round(anchor.beatsBefore);
   if (first < 0 || first >= MAX_LEAD_BEATS) {
     // 大きく変えたとき（×2 など）は詰め直せないので、小節の位相だけ保つ
     first = ((first % 4) + 4) % 4;
@@ -65,4 +66,30 @@ export function shiftGrid(
   const time = anchor.time + deltaSeconds;
   if (time < 0 || time >= analysis.duration) return analysis;
   return rebuildGrid(analysis, analysis.bpm, { ...anchor, time });
+}
+
+/** 手で直せる BPM の範囲（BPM 欄と同じ） */
+export const MIN_MANUAL_BPM = 40;
+export const MAX_MANUAL_BPM = 220;
+
+/**
+ * 2 つの時刻 a・b がどちらも拍になるように格子を作り直す。
+ * 間の拍数を決めれば BPM は一意に決まり、a と b の音にぴったり合う。
+ *
+ * a がいまのカット割りの何拍目にあたるかは保つので、
+ * 写真の切り替わる位置（何拍ごとか）は変わらない。
+ */
+export function alignToTwoPoints(
+  analysis: BeatAnalysis,
+  a: number,
+  b: number,
+  beatsBetween: number,
+): BeatAnalysis {
+  const from = Math.min(a, b);
+  const to = Math.max(a, b);
+  const bpm = (60 * beatsBetween) / (to - from);
+
+  const firstCut = Math.max(0, analysis.beats.indexOf(analysis.downbeats[0]));
+  const index = nearestBeatIndex(analysis.beats, from);
+  return rebuildGrid(analysis, bpm, { time: from, beatsBefore: index - firstCut });
 }

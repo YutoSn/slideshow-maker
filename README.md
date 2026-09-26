@@ -111,8 +111,14 @@ canvas に毎フレーム描画します。写真は縦横比を保ったまま�
 
 ### 書き出し（`src/engine/exporter.ts`）
 
-`canvas.captureStream()` と音声を 1 本の MediaStream にまとめ、`MediaRecorder` で録画します。
-実時間でしか録れないため、書き出しには曲の長さぶんの時間がかかります。
+WebCodecs が使えるブラウザ（Chrome・Edge など）では、1/30 秒ごとの時刻で 1 コマずつ描いて
+`VideoEncoder`（VP9、無ければ VP8）で符号化し、音源は `AudioEncoder`（Opus）で符号化して
+WebM にまとめます（多重化は [mediabunny](https://mediabunny.dev/)、書き出し時にだけ読み込み）。
+コマの時刻が正確なのでカクつかず、多くの場合は曲の長さより早く終わります。
+動画クリップはコマごとにシークして、そのコマが出てから描きます。
+
+WebCodecs が使えないブラウザでは、`canvas.captureStream()` と音声を 1 本の MediaStream にまとめ、
+`MediaRecorder` で録画します。実時間でしか録れないため、曲の長さぶんの時間がかかります。
 
 `MediaRecorder` の出力する WebM には総再生時間（Duration）が書かれておらず、
 そのままではプレイヤーで長さが分からずシークできません。
@@ -138,6 +144,9 @@ node scripts/e2e-export-video.mjs           # 書き出した動画の中で動�
 node scripts/make-demo-audio.mjs            # 確認用の短いクリック音源を生成
 node scripts/make-demo-video.mjs            # 動作確認用の動画クリップを生成
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
+node scripts/e2e-selection-bpm.mjs          # 選択とプレビューの一致、BPM の基準カットを確認
+node scripts/e2e-undo-panels.mjs            # 元に戻す・やり直すと、全体／このカットだけの分離を確認
+node scripts/e2e-sync-tools.mjs             # ずれの表示・2 点で合わせる・クリック音を確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
 node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再生時間を確認
 ```

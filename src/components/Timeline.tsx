@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { BeatAnalysis } from '../engine/beatDetect';
 import { formatTime } from '../engine/audio';
 import BpmField from './BpmField';
 import { onPlayhead } from '../engine/playhead';
+import type { DriftLevel, DriftSummary } from '../engine/onsets';
 import type { MediaItem, Segment } from '../engine/types';
 
 interface Props {
@@ -23,7 +24,20 @@ interface Props {
   onBpmOverride: (bpm: number) => void;
   /** 格子全体を秒単位でずらす */
   onGridShift: (deltaSeconds: number) => void;
+  /** カットの境目ごとの、音とのずれ（ルーラーに色で出す） */
+  drift: DriftSummary | null;
+  /** 「2 点で合わせる」の A・B（ルーラーに印を出す） */
+  marks: { label: string; time: number }[];
+  /** 操作列の下に置く道具（合わせ方・クリック音など） */
+  children?: ReactNode;
 }
+
+const DRIFT_COLORS: Record<DriftLevel, string> = {
+  good: '#5fd38d',
+  fair: '#ffc46b',
+  bad: '#ff6b6b',
+  none: 'rgba(154,154,176,0.55)',
+};
 
 const HEIGHT = 74;
 const MIN_ZOOM = 1;
@@ -52,6 +66,9 @@ export default function Timeline({
   anchorIndex,
   onBpmOverride,
   onGridShift,
+  drift,
+  marks,
+  children,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -154,6 +171,31 @@ export default function Timeline({
     }
     ctx.stroke();
 
+    // カットの境目ごとの、音とのずれ。下端に色の印を出す
+    if (drift) {
+      for (const boundary of drift.boundaries) {
+        if (boundary.time < visibleFrom - 1 || boundary.time > visibleTo + 1) continue;
+        const x = Math.round(xOf(boundary.time));
+        ctx.fillStyle = DRIFT_COLORS[boundary.level];
+        ctx.beginPath();
+        ctx.moveTo(x - 4, HEIGHT);
+        ctx.lineTo(x + 4, HEIGHT);
+        ctx.lineTo(x, HEIGHT - 7);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 「2 点で合わせる」の A・B
+    ctx.font = 'bold 10px ui-monospace, monospace';
+    for (const mark of marks) {
+      if (mark.time < visibleFrom || mark.time > visibleTo) continue;
+      const x = Math.round(xOf(mark.time)) + 0.5;
+      ctx.fillStyle = '#e879f9';
+      ctx.fillRect(x - 0.5, 12, 2, HEIGHT - 12);
+      ctx.fillText(mark.label, x + 4, 13);
+    }
+
     // 時刻の目盛り
     const interval = tickInterval(secondsPerPixel);
     ctx.fillStyle = 'rgba(232,232,240,0.5)';
@@ -166,7 +208,7 @@ export default function Timeline({
       ctx.fillRect(x, 0, 1, 5);
       ctx.fillText(formatTime(t), x + 4, 1);
     }
-  }, [analysis, duration]);
+  }, [analysis, duration, drift, marks]);
 
   // 拡大率・解析結果が変わったら描き直す。スクロールとリサイズにも追従する。
   useEffect(() => {
@@ -355,6 +397,8 @@ export default function Timeline({
           </div>
         </div>
       </div>
+
+      {children}
 
       <div
         ref={scrollRef}

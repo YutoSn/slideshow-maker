@@ -4,6 +4,7 @@ import ProjectPanel from './components/ProjectPanel';
 import CutPanel from './components/CutPanel';
 import { useEditHistory } from './useEditHistory';
 import SettingsPanel from './components/SettingsPanel';
+import SyncTools, { type ClickMode, type SyncPoints } from './components/SyncTools';
 import Timeline from './components/Timeline';
 import { analyzeInWorker, decodeAudioFile, formatTime } from './engine/audio';
 import {
@@ -23,7 +24,9 @@ import type { BeatAnalysis } from './engine/beatDetect';
 import {
   analysisToJson,
   estimateSizeMb,
+  ExportAborted,
   exportVideo,
+  type ExportMode,
   QUALITY_PRESETS,
   type QualityPreset,
 } from './engine/exporter';
@@ -32,7 +35,9 @@ import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
 import { emitPlayhead, onPlayhead } from './engine/playhead';
 import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
-import { rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
+import { alignToTwoPoints, rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
+import { startMetronome } from './engine/metronome';
+import { measureDrift, snapToOnset } from './engine/onsets';
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -105,6 +110,12 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [quality, setQuality] = useState<QualityPreset>('standard');
+  const [exportMode, setExportMode] = useState<ExportMode | null>(null);
+  // 曲と合わせるための道具（2 点で合わせる・クリック音）
+  const [syncPoints, setSyncPoints] = useState<SyncPoints>({ a: null, b: null });
+  const [clickMode, setClickMode] = useState<ClickMode>('off');
+  // 音源を替えたら、前の曲に置いた点は意味がない
+  useEffect(() => setSyncPoints({ a: null, b: null }), [audioFile]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageFrameRef = useRef<HTMLDivElement>(null);
@@ -631,6 +642,7 @@ export default function App() {
         videoBitsPerSecond: preset.videoBitsPerSecond,
         audioBitsPerSecond: AUDIO_BITRATE,
         onProgress: setExportProgress,
+        onMode: setExportMode,
         signal: controller.signal,
       });
       const url = URL.createObjectURL(blob);
@@ -640,9 +652,12 @@ export default function App() {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '書き出しに失敗しました');
+      if (!(cause instanceof ExportAborted)) {
+        setError(cause instanceof Error ? cause.message : '書き出しに失敗しました');
+      }
     } finally {
       setExportProgress(null);
+      setExportMode(null);
       exportAbort.current = null;
     }
   }, [renderContext, audioFile, quality]);
@@ -677,6 +692,38 @@ export default function App() {
     }
     return counts;
   }, [segments, overrides]);
+  const shiftBeatGrid = (deltaSeconds: number) => {
+    const anchor = gridAnchor();
+    if (anchor && analysis) setAnalysis(shiftGrid(analysis, deltaSeconds, anchor));
+  };
+
+  // カットの境目ごとの、音の立ち上がりとのずれ
+  const drift = useMemo(
+    () => (analysis && segments.length > 0 ? measureDrift(analysis, segments.map((s) => s.start)) : null),
+    [analysis, segments],
+  );
+  const syncMarks = useMemo(
+    () =>
+      (['a', 'b'] as const)
+        .filter((key) => syncPoints[key] !== null)
+        .map((key) => ({ label: key.toUpperCase(), time: syncPoints[key] as number })),
+    [syncPoints],
+  );
+
+  // 再生中のクリック音
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!playing || clickMode === 'off' || !audio || !analysis) return;
+    const clicks =
+      clickMode === 'beat'
+        ? (() => {
+            const accents = new Set(analysis.downbeats);
+            return analysis.beats.map((time) => ({ time, accent: accents.has(time) }));
+          })()
+        : segments.map((segment) => ({ time: segment.start, accent: true }));
+    return startMetronome(audio, clicks);
+  }, [playing, clickMode, analysis, segments]);
+
   const usedMediaIds = useMemo(
     () => new Set(segments.map((s) => s.mediaId)),
     [segments],
@@ -918,10 +965,15 @@ export default function App() {
                 </button>
               )}
             </div>
-            {exportProgress !== null && (
+            {exportProgress !== null && exportMode === 'realtime' && (
               <p className="muted">
-                書き出しは実時間で録画するため、曲の長さぶんの時間がかかります。
+                このブラウザでは画面を録画して書き出すため、曲の長さぶんの時間がかかります。
                 このタブを開いたままにしてください。
+              </p>
+            )}
+            {exportProgress !== null && exportMode === 'offline' && (
+              <p className="muted">
+                1 コマずつ描いて書き出しています（曲の長さより早く終わることが多いです）。
               </p>
             )}
           </section>
@@ -954,6 +1006,8 @@ export default function App() {
 
           {analysis && (
             <Timeline
+              drift={drift}
+              marks={syncMarks}
               analysis={analysis}
               segments={segments}
               photos={mediaMap}
@@ -969,11 +1023,29 @@ export default function App() {
                 const anchor = gridAnchor();
                 if (anchor) setAnalysis(rebuildGrid(analysis, bpm, anchor));
               }}
-              onGridShift={(deltaSeconds) => {
-                const anchor = gridAnchor();
-                if (anchor) setAnalysis(shiftGrid(analysis, deltaSeconds, anchor));
-              }}
-            />
+              onGridShift={shiftBeatGrid}
+            >
+              <SyncTools
+                analysis={analysis}
+                drift={drift}
+                points={syncPoints}
+                onSetPoint={(which) => {
+                  const time = audioRef.current?.currentTime ?? currentTime;
+                  const { time: snapped } = snapToOnset(analysis, time);
+                  setSyncPoints((current) => ({ ...current, [which]: snapped }));
+                }}
+                onClearPoints={() => setSyncPoints({ a: null, b: null })}
+                onApplyTwoPoints={(beatsBetween) => {
+                  const { a, b } = syncPoints;
+                  if (a === null || b === null) return;
+                  setAnalysis(alignToTwoPoints(analysis, a, b, beatsBetween));
+                }}
+                onSeek={seek}
+                onShift={shiftBeatGrid}
+                clickMode={clickMode}
+                onClickMode={setClickMode}
+              />
+            </Timeline>
           )}
         </main>
       </div>
