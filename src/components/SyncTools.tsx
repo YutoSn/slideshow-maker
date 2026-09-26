@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { formatTime } from '../engine/audio';
 import { MAX_MANUAL_BPM, MIN_MANUAL_BPM } from '../engine/beatGrid';
 import type { BeatAnalysis } from '../engine/beatDetect';
-import { twoPointBeats, twoPointBpm, type DriftSummary } from '../engine/onsets';
+import { twoPointBeats, twoPointBpm, type DriftLevel, type DriftSummary } from '../engine/onsets';
 
 export type ClickMode = 'off' | 'beat' | 'cut';
 
@@ -25,6 +25,18 @@ interface Props {
   clickMode: ClickMode;
   onClickMode: (mode: ClickMode) => void;
 }
+
+/** 境目の印の色の意味。タイムラインの ▲ と同じ並び */
+const LEGEND: { level: DriftLevel; label: string; hint: string }[] = [
+  { level: 'good', label: '合う', hint: '音とのずれが 30ms 以内' },
+  { level: 'fair', label: '少しずれ', hint: '音とのずれが 30〜70ms' },
+  { level: 'bad', label: 'ずれ', hint: '音とのずれが 70ms より大きい' },
+  {
+    level: 'none',
+    label: '音なし',
+    hint: '切り替わりの近くに目立つ音が無く、判定できない所（静かな所や、音が長く伸びている所など）。一致の数には入りません',
+  },
+];
 
 function ms(seconds: number): string {
   const value = Math.round(seconds * 1000);
@@ -79,18 +91,18 @@ export default function SyncTools({
         {drift && drift.boundaries.length > 0 && (
           <div
             className="sync__score"
-            title="カットの切り替わりと、近くの音の立ち上がりとのずれ。タイムライン上の境目の色と同じです（緑: 30ms 以内 / 黄: 70ms 以内 / 赤: それ以上 / 灰: 近くに目立つ音が無い）"
+            data-good={drift.good}
+            data-measured={drift.measured}
+            title="カットの切り替わりが、近くの音の立ち上がりとどれだけずれているか。タイムラインの目盛りの下の ▲ と同じ色です。▲ にマウスを乗せると、そのカットのずれが出ます。"
           >
-            <span className="sync__label">切り替わりの一致</span>
-            <b>
-              {drift.good} / {drift.measured}
-            </b>
+            <span className="sync__label">切り替わり</span>
             <span className="drift-legend">
-              <i className="drift--good" /> {drift.good}
-              <i className="drift--fair" />{' '}
-              {drift.boundaries.filter((d) => d.level === 'fair').length}
-              <i className="drift--bad" />{' '}
-              {drift.boundaries.filter((d) => d.level === 'bad').length}
+              {LEGEND.map(({ level, label, hint }) => (
+                <span key={level} className="drift-legend__item" title={hint}>
+                  <i className={`drift--${level}`} />
+                  {label} {drift.boundaries.filter((d) => d.level === level).length}
+                </span>
+              ))}
             </span>
             {worthShifting && (
               <span className="muted">
@@ -110,8 +122,6 @@ export default function SyncTools({
           </div>
         )}
 
-        <div className="sync__spacer" />
-
         <button
           type="button"
           className={open ? 'sync__toggle sync__toggle--on' : 'sync__toggle'}
@@ -121,12 +131,15 @@ export default function SyncTools({
           2 点で合わせる
         </button>
 
-        <label className="sync__click">
-          <span>クリック音</span>
-          <select value={clickMode} onChange={(e) => onClickMode(e.target.value as ClickMode)}>
-            <option value="off">なし</option>
-            <option value="beat">拍ごと</option>
-            <option value="cut">切り替わりごと</option>
+        <label className="sync__click" title="再生中に、曲に重ねてクリック音を鳴らします">
+          <select
+            value={clickMode}
+            aria-label="クリック音"
+            onChange={(e) => onClickMode(e.target.value as ClickMode)}
+          >
+            <option value="off">クリック音なし</option>
+            <option value="beat">クリック: 拍ごと</option>
+            <option value="cut">クリック: 切り替わり</option>
           </select>
         </label>
       </div>

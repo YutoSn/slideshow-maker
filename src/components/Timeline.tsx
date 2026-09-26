@@ -28,6 +28,8 @@ interface Props {
   drift: DriftSummary | null;
   /** 「2 点で合わせる」の A・B（ルーラーに印を出す） */
   marks: { label: string; time: number }[];
+  /** 素材を差し替えた直後に光らせるカット（`カット ID:時刻`。時刻が変われば光らせ直す） */
+  flashId: string | null;
   /** 解析結果（BPM・拍の位置）を JSON で保存する */
   onSaveBeats: () => void;
   /** 操作列の下に置く道具（合わせ方・クリック音など） */
@@ -71,6 +73,7 @@ export default function Timeline({
   drift,
   marks,
   onSaveBeats,
+  flashId,
   children,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -349,6 +352,38 @@ export default function Timeline({
     return () => scroll.removeEventListener('wheel', onWheel);
   }, [applyZoom]);
 
+  /** 目盛りの下の ▲ にマウスを乗せたときの説明 */
+  const describeBoundaryAt = (clientX: number): string => {
+    const scroll = scrollRef.current;
+    const inner = innerRef.current;
+    const fallback = 'クリックでその位置へ移動';
+    if (!scroll || !inner || !drift) return fallback;
+    const rect = scroll.getBoundingClientRect();
+    const contentX = scroll.scrollLeft + (clientX - rect.left);
+    const pxPerSecond = inner.clientWidth / duration;
+
+    let best = -1;
+    let bestDistance = 6; // px
+    drift.boundaries.forEach((boundary, index) => {
+      const distance = Math.abs(boundary.time * pxPerSecond - contentX);
+      if (distance <= bestDistance) {
+        best = index;
+        bestDistance = distance;
+      }
+    });
+    if (best < 0) return fallback;
+
+    const { drift: offset, level } = drift.boundaries[best];
+    const head = `カット ${best + 1} への切り替わり`;
+    if (level === 'none' || offset === null) {
+      return `${head}：近くに目立つ音が無く、判定できません（静かな所など）`;
+    }
+    const size = Math.round(Math.abs(offset) * 1000);
+    const direction = size === 0 ? '音とぴったり' : `音より ${size}ms ${offset > 0 ? '遅い' : '早い'}`;
+    const verdict = level === 'good' ? '合っている' : level === 'fair' ? '少しずれ' : 'ずれ';
+    return `${head}：${direction}（${verdict}）`;
+  };
+
   const seekFromEvent = (clientX: number) => {
     const scroll = scrollRef.current;
     const inner = innerRef.current;
@@ -424,6 +459,9 @@ export default function Timeline({
             ref={canvasRef}
             className="timeline__ruler"
             onClick={(e) => seekFromEvent(e.clientX)}
+            onMouseMove={(e) => {
+              e.currentTarget.title = describeBoundaryAt(e.clientX);
+            }}
           />
 
           <div className="segments" ref={segmentsRef}>
@@ -444,6 +482,7 @@ export default function Timeline({
                     dropTarget === segment.id ? 'segment--drop' : '',
                     draggingIndex === index ? 'segment--dragging' : '',
                     anchorIndex === index ? 'segment--anchor' : '',
+                    flashId?.startsWith(`${segment.id}:`) ? 'segment--flash' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}

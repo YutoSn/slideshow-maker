@@ -9,6 +9,8 @@ interface Props {
   usedMediaIds: Set<string>;
   /** 割り当て先として選ばれているカット。無ければクリック割り当ては効かない */
   hasSelection: boolean;
+  /** 選択中のカットがいま使っている素材（枠で示す） */
+  currentMediaId: string | null;
   onPhotos: (files: FileList) => void;
   onAudio: (file: File) => void;
   onRemovePhoto: (id: string) => void;
@@ -23,6 +25,7 @@ export default function MediaPool({
   analyzing,
   usedMediaIds,
   hasSelection,
+  currentMediaId,
   onPhotos,
   onAudio,
   onRemovePhoto,
@@ -139,6 +142,7 @@ export default function MediaPool({
                   className={[
                     'tray__item',
                     used ? '' : 'tray__item--unused',
+                    currentMediaId === photo.id ? 'tray__item--current' : '',
                     cutOver === photo.id ? 'tray__item--drop' : '',
                   ]
                     .filter(Boolean)

@@ -39,11 +39,16 @@ await page.waitForTimeout(200);
 expect('カット 3 をクリック（表示）', await shown(), 'カット 3');
 expect('カット 3 をクリック（選択）', await picked(), 'カット 3');
 
-// 2. 素材をクリックで割り当て → 次のカットへ進み、プレビューもそこへ
+// 2. 素材をクリックで割り当て → 選択もプレビューもそのカットのまま
 await page.locator('.tray__assign').nth(5).click();
 await page.waitForTimeout(200);
-expect('割り当て後（表示）', await shown(), 'カット 4');
-expect('割り当て後（選択）', await picked(), 'カット 4');
+expect('割り当て後（表示）', await shown(), 'カット 3');
+expect('割り当て後（選択）', await picked(), 'カット 3');
+// 「次 ▶」で次のカットへ進むと、プレビューも付いてくる
+await page.click('.panel--cut button[aria-label="次のカットを選ぶ"]');
+await page.waitForTimeout(200);
+expect('次 ▶ のあと（表示）', await shown(), 'カット 4');
+expect('次 ▶ のあと（選択）', await picked(), 'カット 4');
 
 // 3. ルーラーをクリック → 選択がその位置のカットに追従する
 const ruler = page.locator('.timeline__ruler');

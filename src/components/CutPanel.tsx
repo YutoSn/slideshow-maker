@@ -6,6 +6,12 @@ interface Props {
   selected: Segment;
   /** 選択中のカットの番号（0 始まり） */
   index: number;
+  /** カットの総数 */
+  count: number;
+  /** 前後のカットへ選択を動かす（-1 / +1） */
+  onStep: (delta: number) => void;
+  /** 素材を差し替えた直後の知らせ（undoable: 元に戻せる変更があったか） */
+  notice: { text: string; undoable: boolean } | null;
   /** 選択中のカットが使っている素材（動画なら開始位置を出す） */
   media: MediaItem | null;
   beatSeconds: number;
@@ -24,11 +30,14 @@ interface Props {
  * 選択中のカットだけに効く調整。
  *
  * 全体の設定と同じ見た目・同じ場所にあると取り違えやすいので、
- * プレビューとタイムラインの間に置き、色も変えて別物に見せる。
+ * プレビューの横（スマホでは下）に置き、色も変えて別物に見せる。
  */
 export default function CutPanel({
   selected,
   index,
+  count,
+  onStep,
+  notice,
   media,
   beatSeconds,
   edited,
@@ -50,10 +59,38 @@ export default function CutPanel({
             <span className="cut__name">{media?.name ?? '(素材なし)'}</span>
           </h2>
         </div>
+        <div className="cut__nav">
+          <button
+            type="button"
+            onClick={() => onStep(-1)}
+            disabled={index <= 0}
+            aria-label="前のカットを選ぶ"
+          >
+            ◀ 前
+          </button>
+          <button
+            type="button"
+            onClick={() => onStep(1)}
+            disabled={index >= count - 1}
+            aria-label="次のカットを選ぶ"
+          >
+            次 ▶
+          </button>
+        </div>
         <button type="button" className="cut__reset" onClick={onReset} disabled={!edited}>
           このカットを自動に戻す
         </button>
       </div>
+
+      {/* 素材プールで写真を押したとき、差し替わったことをその場で示す */}
+      <p className="cut__notice" role="status" aria-live="polite">
+        {notice && (
+          <span key={notice.text}>
+            ✓ {notice.text}
+            {notice.undoable && '（元に戻す: Ctrl / ⌘ + Z）'}
+          </span>
+        )}
+      </p>
 
       <div className="cut__controls">
         <div className="cut__field">

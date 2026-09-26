@@ -148,6 +148,7 @@ node scripts/e2e-selection-bpm.mjs          # 選択とプレビューの一致�
 node scripts/e2e-undo-panels.mjs            # 元に戻す・やり直すと、全体／このカットだけの分離を確認
 node scripts/e2e-sync-tools.mjs             # ずれの表示・2 点で合わせる・クリック音を確認
 node scripts/e2e-preview-size.mjs           # 画面の低い PC でもプレビューが潰れないか確認
+node scripts/e2e-autosave.mjs               # 新しいプロジェクトが自動保存されるか確認
 node scripts/make-demo-photos.mjs           # 動作確認用のダミー写真を生成
 node scripts/check-webm-duration.mjs [動画]  # 書き出した WebM の総再生時間を確認
 ```

@@ -114,6 +114,14 @@ export default function App() {
   // 曲と合わせるための道具（2 点で合わせる・クリック音）
   const [syncPoints, setSyncPoints] = useState<SyncPoints>({ a: null, b: null });
   const [clickMode, setClickMode] = useState<ClickMode>('off');
+  // 素材を割り当てた直後の知らせ（どのカットを何に差し替えたか）
+  const [assigned, setAssigned] = useState<{
+    segmentId: string;
+    name: string;
+    /** もともと同じ素材だった */
+    same: boolean;
+    at: number;
+  } | null>(null);
   // 音源を替えたら、前の曲に置いた点は意味がない
   useEffect(() => setSyncPoints({ a: null, b: null }), [audioFile]);
 
@@ -322,16 +330,36 @@ export default function App() {
     return onPlayhead(follow);
   }, [segments, playing, currentTime]);
 
-  /** 写真をカットに当てはめる。クリック割り当てでは次のカットへ自動で進む。 */
+  /**
+   * 写真をカットに当てはめる。選択はそのカットに留める。
+   *
+   * 以前は割り当てると次のカットへ自動で進んでいたが、差し替わったカットが
+   * 選択から外れて見えなくなり、差し替わったか分からずにもう一度押すと
+   * 次のカットにも同じ写真が入ってしまっていた。
+   */
   const assignPhoto = useCallback(
-    (segmentId: string, mediaId: string, advance: boolean) => {
-      patchOverride(segmentId, { mediaId });
-      const index = segments.findIndex((s) => s.id === segmentId);
-      const target = segments[advance ? index + 1 : index];
-      if (target) selectCut(target);
+    (segmentId: string, mediaId: string) => {
+      const target = segments.find((s) => s.id === segmentId);
+      if (!target) return;
+      const same = target.mediaId === mediaId;
+      if (!same) patchOverride(segmentId, { mediaId });
+      selectCut(target);
+      setAssigned({
+        segmentId,
+        name: mediaMap.get(mediaId)?.name ?? '',
+        same,
+        at: Date.now(),
+      });
     },
-    [patchOverride, segments, selectCut],
+    [patchOverride, segments, selectCut, mediaMap],
   );
+
+  // 差し替えの知らせは少しで消す
+  useEffect(() => {
+    if (!assigned) return;
+    const timer = setTimeout(() => setAssigned(null), 2500);
+    return () => clearTimeout(timer);
+  }, [assigned]);
 
   /**
    * カットを掴んで別の位置へ動かす。
@@ -544,6 +572,25 @@ export default function App() {
       }
     })();
   }, [applyProject, refreshProjects]);
+
+  // 新しく作ったプロジェクトも、素材を入れた時点で保存先を用意して自動保存に乗せる。
+  // 以前は一度「保存」を押すまで保存先が無く、自動保存されなかった。
+  const hasContent = photos.length > 0 || audioFile !== null;
+  useEffect(() => {
+    if (projectId || !hasContent || !isStorageAvailable()) return;
+    setProjectId(newProjectId());
+    // 名前を付けていなければ、一覧で見分けられるよう作った日時を入れる
+    setProjectName((current) =>
+      current.trim() === '' || current === '無題のプロジェクト'
+        ? `無題のプロジェクト（${new Date().toLocaleString('ja-JP', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}）`
+        : current,
+    );
+  }, [projectId, hasContent]);
 
   // 編集内容が変わったら、少し待ってから自動保存する
   useEffect(() => {
@@ -819,15 +866,13 @@ export default function App() {
             analyzing={analyzing}
             usedMediaIds={usedMediaIds}
             hasSelection={selectedId !== null}
+            currentMediaId={selected?.mediaId ?? null}
             onAssign={(mediaId) => {
-              if (selectedId) assignPhoto(selectedId, mediaId, true);
+              if (selectedId) assignPhoto(selectedId, mediaId);
             }}
             onDropCut={(cutIndex, mediaId) => {
               const target = segments[cutIndex];
-              if (target) {
-                patchOverride(target.id, { mediaId });
-                selectCut(target);
-              }
+              if (target) assignPhoto(target.id, mediaId);
             }}
             onPhotos={addPhotos}
             onAudio={(file) => void loadAudio(file)}
@@ -965,6 +1010,18 @@ export default function App() {
             <CutPanel
               selected={selected}
               index={selectedIndex}
+              count={segments.length}
+              onStep={(delta) => {
+                const next = segments[selectedIndex + delta];
+                if (next) selectCut(next);
+              }}
+              notice={
+                assigned && assigned.segmentId === selected.id
+                  ? assigned.same
+                    ? { text: `すでに ${assigned.name} です`, undoable: false }
+                    : { text: `${assigned.name} に差し替えました`, undoable: true }
+                  : null
+              }
               media={mediaMap.get(selected.mediaId) ?? null}
               beatSeconds={analysis ? 60 / analysis.bpm : 0.5}
               edited={overrides[selected.id] !== undefined}
@@ -999,7 +1056,8 @@ export default function App() {
               selectedId={selectedId}
               onSeek={seek}
               onSelect={selectCutById}
-              onDropPhoto={(segmentId, mediaId) => assignPhoto(segmentId, mediaId, false)}
+              onDropPhoto={(segmentId, mediaId) => assignPhoto(segmentId, mediaId)}
+              flashId={assigned && !assigned.same ? `${assigned.segmentId}:${assigned.at}` : null}
               onReorder={reorderCut}
               anchorIndex={selectedIndex}
               onBpmOverride={(bpm) => {
