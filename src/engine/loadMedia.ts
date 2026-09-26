@@ -9,21 +9,84 @@ export function mediaIdFor(file: File): string {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
+/** 描画の代役に使う小さな画像の長辺（px）。本命の画像が間に合わないときに使う */
+const LOWRES_EDGE = 480;
+/** 一覧（素材プール・タイムライン）のサムネイルの長辺（px） */
+const THUMB_EDGE = 200;
+
+/**
+ * 写真を長辺 edge px まで縮めた画像にする。
+ * ファイルから直接 createImageBitmap すると、展開と縮小がメインスレッドの外で行われる。
+ * 使えないブラウザでは、読み込み済みの img から canvas に縮めて描く。
+ */
+export async function shrinkPhoto(
+  source: Blob,
+  fallback: HTMLImageElement,
+  width: number,
+  height: number,
+  edge: number,
+): Promise<ImageBitmap | HTMLCanvasElement> {
+  const scale = Math.min(1, edge / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  try {
+    return await createImageBitmap(source, {
+      resizeWidth: w,
+      resizeHeight: h,
+      resizeQuality: 'high',
+    });
+  } catch {
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d')?.drawImage(fallback, 0, 0, w, h);
+    return canvas;
+  }
+}
+
+/** 小さな画像から、一覧用の JPEG を作って URL にする */
+async function thumbnailFrom(image: CanvasImageSource, width: number, height: number): Promise<string> {
+  const scale = Math.min(1, THUMB_EDGE / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.8),
+  );
+  return blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/jpeg', 0.8);
+}
+
+/**
+ * 写真を読み込む。
+ *
+ * スマホの写真（1200 万画素など）をそのまま一覧に並べたりプレビューに描いたりすると、
+ * 展開に時間がかかり、切り替わりのたびに画面が止まる。
+ * 読み込み時に小さな画像とサムネイルを作っておき、元の画像は書き出しにだけ使う。
+ */
 function loadPhoto(file: File, url: string): Promise<MediaItem | null> {
   return new Promise((resolve) => {
     const image = new Image();
-    image.onload = () =>
-      resolve({
-        id: mediaIdFor(file),
-        name: file.name,
-        url,
-        kind: 'photo',
-        element: image,
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-        duration: 0,
-        thumbnail: url,
-      });
+    image.onload = () => {
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      void (async () => {
+        const lowres = await shrinkPhoto(file, image, width, height, LOWRES_EDGE);
+        const thumbnail = await thumbnailFrom(lowres, width, height).catch(() => url);
+        resolve({
+          id: mediaIdFor(file),
+          name: file.name,
+          url,
+          kind: 'photo',
+          element: image,
+          width,
+          height,
+          duration: 0,
+          thumbnail,
+          lowres,
+        });
+      })();
+    };
     // HEIC などブラウザが表示できない形式は静かに読み飛ばす
     image.onerror = () => {
       URL.revokeObjectURL(url);

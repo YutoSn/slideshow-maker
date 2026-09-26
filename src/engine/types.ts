@@ -16,6 +16,11 @@ export interface MediaItem {
   duration: number;
   /** 一覧に出すサムネイル。動画は先頭付近のコマから作る */
   thumbnail: string;
+  /**
+   * 写真を小さく縮めたもの。プレビュー用の画像が間に合わないときの代役と、
+   * ぼかし背景に使う（元の大きな画像を描くと重いため）
+   */
+  lowres?: ImageBitmap | HTMLCanvasElement;
 }
 
 export const MIN_VIDEO_RATE = 0.25;

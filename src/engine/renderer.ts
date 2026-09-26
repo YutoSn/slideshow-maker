@@ -12,6 +12,11 @@ export interface RenderContext {
    * プレビューをドラッグして決める。
    */
   focus: Record<string, PhotoFocus>;
+  /**
+   * 素材から、実際に描く画像を選ぶ。プレビューでは縮めた画像を返す。
+   * 省略すると素材そのもの（書き出しでは書き出し用に縮めた画像）を描く。
+   */
+  imageFor?: (item: MediaItem) => CanvasImageSource;
 }
 
 export interface PhotoFocus {
@@ -100,6 +105,7 @@ function beatPulse(time: number, analysis: BeatAnalysis, amount: number): number
 function drawPhoto(
   ctx: CanvasRenderingContext2D,
   item: MediaItem,
+  image: CanvasImageSource,
   width: number,
   height: number,
   scale: number,
@@ -128,7 +134,7 @@ function drawPhoto(
 
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.drawImage(item.element, x, y, drawWidth, drawHeight);
+  ctx.drawImage(image, x, y, drawWidth, drawHeight);
   ctx.restore();
 }
 
@@ -216,7 +222,8 @@ function blurScratch(item: MediaItem, width: number, height: number): HTMLCanvas
   const dw = item.width * cover;
   const dh = item.height * cover;
   ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(item.element, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  // ぼかしに使うだけなので、写真は小さな代役で十分（元の大きな画像は描かない）
+  ctx.drawImage(item.lowres ?? item.element, (w - dw) / 2, (h - dh) / 2, dw, dh);
 
   if (blurCache.size > 60) blurCache.clear();
   blurCache.set(key, canvas);
@@ -318,7 +325,8 @@ export function renderFrame(
     const framing = focus[target.mediaId] ?? NO_FOCUS;
     const offsetX = kb.fromX + (kb.toX - kb.fromX) * eased + framing.x + shift;
     const offsetY = kb.fromY + (kb.toY - kb.fromY) * eased + framing.y;
-    drawPhoto(ctx, source, width, height, scale, offsetX, offsetY, alpha, target.fit);
+    const image = render.imageFor?.(source) ?? source.element;
+    drawPhoto(ctx, source, image, width, height, scale, offsetX, offsetY, alpha, target.fit);
   };
 
   /** 手前の写真を描く前に、そのカットの背景を敷く */
