@@ -15,6 +15,7 @@
     "bench": "node scripts/bench-mobile.mjs"
   },
   "dependencies": {
+    "mediabunny": "^1.60.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

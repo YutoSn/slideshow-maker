@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 const photos = readdirSync('assets/demo-photos')
   .filter((f) => f.endsWith('.jpg'))
   .map((f) => resolve('assets/demo-photos', f));
-const audio = resolve('assets/demo-audio', readdirSync('assets/demo-audio')[0]);
+const audio = resolve('assets/demo-audio', process.env.AUDIO_FILE ?? 'click-40s.webm');
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 const page = await browser.newPage({ viewport: { width: 1500, height: 1050 } });

@@ -21,8 +21,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist node_modules (
-  echo   初回のみ、必要な部品をそろえます。数分かかります...
+rem 初回と、最新版を取り込んで部品が増えたときは、部品をそろえる
+node scripts\needs-install.cjs
+if errorlevel 1 (
+  echo   必要な部品をそろえます。初回は数分かかります...
   echo.
   call npm install
   if errorlevel 1 (

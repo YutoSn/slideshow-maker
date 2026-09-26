@@ -1,19 +1,13 @@
 import type { BeatAnalysis } from './beatDetect';
+import { PROGRESS_INTERVAL_MS, prepareMedia, type ExportOptions } from './exportShared';
+import { createMediaClock } from './mediaClock';
 import { renderFrame, type RenderContext } from './renderer';
-import type { MediaItem } from './types';
 import { pauseAllVideos, syncVideos } from './videoSync';
 import { fixWebmDuration } from './webmDuration';
 
-export interface ExportOptions {
-  width: number;
-  height: number;
-  fps: number;
-  /** 映像のビットレート（bps）。ファイルサイズはおおむねこれで決まる。 */
-  videoBitsPerSecond: number;
-  audioBitsPerSecond: number;
-  onProgress: (ratio: number) => void;
-  signal: AbortSignal;
-}
+export { ExportAborted, type ExportMode, type ExportOptions } from './exportShared';
+
+
 
 export type QualityPreset = 'high' | 'standard' | 'light';
 
@@ -49,67 +43,12 @@ function pickMimeType(): string {
   return '';
 }
 
-/** 進捗表示を更新する間隔（ms）。毎フレーム画面全体を描き直すと録画が詰まる */
-const PROGRESS_INTERVAL_MS = 250;
-
-/**
- * 拡大の演出（Ken Burns・拍の拡大・ズーム系のトランジション）で
- * 最大どれくらい大きく描かれるか。これを見込んで縮小しておく。
- */
-const MAX_DRAW_SCALE = 1.6;
-
-/**
- * 写真を書き出しの解像度まで縮め、デコード済みの ImageBitmap にしておく。
- *
- * 元の写真（数千 px の JPEG）を毎フレーム縮小して描くと重く、
- * カットが切り替わる瞬間にはデコードも走るため、そこで録画がカクつく。
- */
-async function prepareMedia(
-  media: Map<string, MediaItem>,
-  width: number,
-  height: number,
-): Promise<{ media: Map<string, MediaItem>; release: () => void }> {
-  const bitmaps: ImageBitmap[] = [];
-  const prepared = new Map<string, MediaItem>();
-
-  await Promise.all(
-    Array.from(media.values()).map(async (item) => {
-      if (item.kind !== 'photo' || typeof createImageBitmap !== 'function') {
-        prepared.set(item.id, item);
-        return;
-      }
-      const scale = Math.max(width / item.width, height / item.height) * MAX_DRAW_SCALE;
-      try {
-        const bitmap =
-          scale >= 1
-            ? await createImageBitmap(item.element as HTMLImageElement)
-            : await createImageBitmap(item.element as HTMLImageElement, {
-                resizeWidth: Math.max(1, Math.round(item.width * scale)),
-                resizeHeight: Math.max(1, Math.round(item.height * scale)),
-                resizeQuality: 'high',
-              });
-        bitmaps.push(bitmap);
-        // 縦横比の計算は元の大きさのまま使う（drawImage が描く大きさに合わせる）
-        prepared.set(item.id, { ...item, element: bitmap });
-      } catch {
-        prepared.set(item.id, item);
-      }
-    }),
-  );
-
-  return {
-    media: prepared,
-    release: () => {
-      for (const bitmap of bitmaps) bitmap.close();
-    },
-  };
-}
 
 /**
  * canvas の描画と音声を 1 本の MediaStream にまとめて録画する。
  * MediaRecorder は実時間でしか録れないため、書き出しには曲の長さぶんかかる。
  */
-export async function exportVideo(
+async function exportRealtime(
   render: RenderContext,
   audioFile: File,
   options: ExportOptions,
@@ -188,22 +127,8 @@ export async function exportVideo(
     recorder.onerror = () => reject(new Error('録画中にエラーが発生しました'));
   });
 
-  /**
-   * 録画の時計。audio.currentTime はブラウザによって数十 ms 刻みでしか
-   * 進まず、そのまま使うと動きが階段状になる。経過時間で補間し、
-   * 大きくズレたときだけ音声の位置に合わせ直す。
-   */
-  let clockBase = { media: 0, wall: performance.now() };
-  const clock = (): number => {
-    const media = audio.currentTime;
-    const now = performance.now();
-    const estimated = clockBase.media + (now - clockBase.wall) / 1000;
-    if (audio.paused || Math.abs(estimated - media) > 0.08) {
-      clockBase = { media, wall: now };
-      return media;
-    }
-    return estimated;
-  };
+  // audio.currentTime の粗い刻みを、経過時間で補って滑らかにする
+  let clock = createMediaClock(audio);
 
   let lastFrame = -1;
   let lastProgressAt = 0;
@@ -246,7 +171,7 @@ export async function exportVideo(
   recorder.start(1000);
   track?.requestFrame();
   await audio.play();
-  clockBase = { media: audio.currentTime, wall: performance.now() };
+  clock = createMediaClock(audio);
   tick();
 
   try {
@@ -257,6 +182,35 @@ export async function exportVideo(
     cleanup();
   }
 }
+
+/** WebCodecs で書き出せるなら、その実装（書き出し時にだけ読み込む）と使うコーデックを返す。 */
+async function loadOfflineExport(options: ExportOptions) {
+  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined') return null;
+  try {
+    const module = await import('./offlineExport');
+    const codec = await module.offlineVideoCodec(options);
+    return codec ? { module, codec } : null;
+  } catch {
+    // 読み込めない・判定できないときは録画方式に任せる
+    return null;
+  }
+}
+
+/** 書き出す。WebCodecs が使えれば offline、使えなければ realtime。 */
+export async function exportVideo(
+  render: RenderContext,
+  audioFile: File,
+  options: ExportOptions,
+): Promise<Blob> {
+  const offline = await loadOfflineExport(options);
+  if (offline) {
+    options.onMode?.('offline');
+    return offline.module.exportOffline(render, audioFile, options, offline.codec);
+  }
+  options.onMode?.('realtime');
+  return exportRealtime(render, audioFile, options);
+}
+
 
 /** 解析結果を JSON で持ち出せるようにする（編集結果の共有・再現用）。 */
 export function analysisToJson(analysis: BeatAnalysis): string {

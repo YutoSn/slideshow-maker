@@ -170,7 +170,7 @@ select, input[type='number'] {
 .cut__head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .cut__thumb { width: 52px; height: 34px; object-fit: cover; border-radius: 5px; flex: none; }
 .cut__title { min-width: 0; flex: 1; }
-.cut__scope { font-size: 11px; color: var(--accent); letter-spacing: 0.04em; font-weight: 600; }
+.cut__scope { white-space: nowrap; font-size: 11px; color: var(--accent); letter-spacing: 0.04em; font-weight: 600; }
 .panel--cut h2 {
   display: flex; align-items: center; gap: 8px; margin: 0;
   font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0;
@@ -257,7 +257,7 @@ select, input[type='number'] {
 }
 .zoom__hint { margin: 8px 0 0; }
 
-.transport__quality { width: auto; }
+.transport__quality { width: auto; max-width: 210px; text-overflow: ellipsis; }
 
 .bpm { display: flex; align-items: center; gap: 4px; }
 .bpm input {
@@ -306,7 +306,7 @@ select, input[type='number'] {
 /* ---------- タイムラインの操作列 ---------- */
 
 .toolbar {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center; gap: 10px;
   flex-wrap: wrap; margin-bottom: 12px;
 }
 .toolbar h2 { margin: 0; }
@@ -359,9 +359,37 @@ select, input[type='number'] {
     padding-right: 8px;
   }
 
-  .app__main { height: 100%; min-height: 0; }
+  /* 右の列は画面の高さに固定する。高さが足りないときだけ、列ごとスクロールする */
+  .app__main { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .app__main > .panel--timeline { flex: none; }
 
-  .panel--stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  /* プレビューは残りの高さを使う。ただし潰れて見えなくならないよう下限を設ける */
+  .panel--stage { flex: 1; min-height: 240px; display: flex; flex-direction: column; }
+
+  /*
+   * 「このカットだけ」は、プレビューの右横に置く。
+   * プレビューは 16:9 なので横に余りが出る。縦に積むとプレビューの高さを奪い、
+   * 画面の低いノート PC ではプレビューが見えなくなっていた。
+   */
+  .app__main--cut {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 32%, 420px);
+    grid-template-rows: minmax(240px, 1fr) auto;
+  }
+  .app__main--cut > .panel--stage { grid-column: 1; grid-row: 1; min-height: 0; }
+  .app__main--cut > .panel--cut { grid-column: 2; grid-row: 1; min-height: 0; overflow-y: auto; }
+  .app__main--cut > .panel--timeline { grid-column: 1 / -1; grid-row: 2; }
+  /* 細い列では、見出しの下にボタンを回す */
+  .app__main--cut .cut__head { flex-wrap: wrap; }
+  .app__main--cut .cut__title { flex: 1 1 140px; }
+  .app__main--cut .cut__reset { flex: 1 1 100%; }
+}
+
+/* 画面の低い PC では、見出しの説明文を省いてプレビューに高さを回す */
+@media (min-width: 1080px) and (max-height: 820px) {
+  .app__head { margin-bottom: 12px; }
+  .app__head p { display: none; }
+  .app { padding-top: 14px; }
 
   /* 残った高さに 16:9 を収める */
   .stage__frame {
@@ -430,3 +458,43 @@ select, input[type='number'] {
 .rates { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .rates button { flex: 1; min-width: 44px; padding: 5px 4px; font-size: 12px; }
 .rates .rates__on { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+
+/* ---------- 曲と合わせる道具（ずれの表示・2 点で合わせる・クリック音） ---------- */
+
+.timeline__tools { display: flex; align-items: flex-start; gap: 10px 14px; flex-wrap: wrap; margin: -4px 0 10px; }
+.timeline__tools .toolbar__right { margin-left: auto; }
+.toolbar__save { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.sync { flex: 1 1 520px; min-width: 0; }
+.sync__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sync__spacer { flex: 1; }
+.sync__score {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 3px 8px;
+}
+.sync__score b { font-variant-numeric: tabular-nums; }
+.sync__score button { font-size: 11.5px; padding: 2px 8px; }
+.sync__label { color: var(--muted); font-size: 11px; letter-spacing: 0.04em; }
+.drift-legend { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.drift-legend i {
+  display: inline-block; width: 0; height: 0; margin-left: 4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 7px solid;
+}
+.drift--good { color: #5fd38d; }
+.drift--fair { color: #ffc46b; }
+.drift--bad { color: #ff6b6b; }
+.sync__toggle { font-size: 12px; padding: 4px 10px; }
+.sync__toggle--on { border-color: #e879f9; color: #f0abfc; }
+.sync__click { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.sync__click select { width: auto; padding: 3px 8px; font-size: 12px; }
+
+.twopoint {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid rgba(232, 121, 249, 0.45); background: rgba(232, 121, 249, 0.05);
+}
+.twopoint p { margin: 0 0 8px; }
+.twopoint__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 12.5px; }
+.twopoint__row button { font-size: 12px; padding: 4px 10px; }
+.twopoint__point { display: flex; align-items: center; gap: 8px; }
+.twopoint__beats { font-variant-numeric: tabular-nums; min-width: 4em; text-align: center; }
+.twopoint__warn { color: #ffc46b; font-size: 12px; margin: 0; }
