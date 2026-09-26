@@ -17,8 +17,9 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d node_modules ]; then
-  echo "  初回のみ、必要な部品をそろえます。数分かかります..."
+# 初回と、最新版を取り込んで部品が増えたときは、部品をそろえる
+if ! node scripts/needs-install.cjs; then
+  echo "  必要な部品をそろえます。初回は数分かかります..."
   echo
   npm install
   echo
