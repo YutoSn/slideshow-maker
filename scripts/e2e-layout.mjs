@@ -22,7 +22,7 @@ await page.waitForSelector('.segments .segment', { timeout: 120000 });
 // --- 3. BPM がタイムライン内にあるか -----------------------------
 const bpmInTimeline = await page.evaluate(() => {
   const bpm = document.querySelector('.bpm');
-  const timeline = document.querySelector('.app__main .panel:nth-child(2)');
+  const timeline = document.querySelector('.app__main .panel--timeline');
   const settings = document.querySelector('.app__side');
   return {
     inTimeline: !!(bpm && timeline?.contains(bpm)),

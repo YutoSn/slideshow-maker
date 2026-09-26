@@ -28,6 +28,8 @@ interface Props {
   drift: DriftSummary | null;
   /** 「2 点で合わせる」の A・B（ルーラーに印を出す） */
   marks: { label: string; time: number }[];
+  /** 解析結果（BPM・拍の位置）を JSON で保存する */
+  onSaveBeats: () => void;
   /** 操作列の下に置く道具（合わせ方・クリック音など） */
   children?: ReactNode;
 }
@@ -68,6 +70,7 @@ export default function Timeline({
   onGridShift,
   drift,
   marks,
+  onSaveBeats,
   children,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -356,7 +359,7 @@ export default function Timeline({
   };
 
   return (
-    <section className="panel">
+    <section className="panel panel--timeline">
       <div className="toolbar">
         <h2>3. タイムライン</h2>
 
@@ -367,38 +370,50 @@ export default function Timeline({
           anchorLabel={anchorIndex >= 0 ? `カット ${anchorIndex + 1}` : null}
         />
 
-        <div className="toolbar__right">
-          <span className="muted">
-            {segments.length} カット ／ {formatTime(duration)}
-          </span>
-          <div className="zoom__controls">
-            <button
-              type="button"
-              onClick={() => applyZoom(zoom / 1.6)}
-              disabled={zoom <= MIN_ZOOM}
-              aria-label="タイムラインを縮小"
-              title="縮小"
-            >
-              −
-            </button>
-            <span className="zoom__level">×{zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}</span>
-            <button
-              type="button"
-              onClick={() => applyZoom(zoom * 1.6)}
-              disabled={zoom >= MAX_ZOOM}
-              aria-label="タイムラインを拡大"
-              title="拡大"
-            >
-              ＋
-            </button>
-            <button type="button" onClick={() => applyZoom(1)} disabled={zoom === 1} title="全体を表示">
-              全体
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="linkish toolbar__save"
+          onClick={onSaveBeats}
+          title="検出した BPM とビート位置を JSON ファイルとして保存します"
+        >
+          解析結果を保存
+        </button>
+
       </div>
 
-      {children}
+      {/* 合わせる道具と表示範囲の操作は 1 行にまとめ、プレビューの高さを奪わないようにする */}
+      <div className="timeline__tools">
+        {children}
+          <div className="toolbar__right">
+            <span className="muted">
+              {segments.length} カット ／ {formatTime(duration)}
+            </span>
+            <div className="zoom__controls">
+              <button
+                type="button"
+                onClick={() => applyZoom(zoom / 1.6)}
+                disabled={zoom <= MIN_ZOOM}
+                aria-label="タイムラインを縮小"
+                title="縮小"
+              >
+                −
+              </button>
+              <span className="zoom__level">×{zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}</span>
+              <button
+                type="button"
+                onClick={() => applyZoom(zoom * 1.6)}
+                disabled={zoom >= MAX_ZOOM}
+                aria-label="タイムラインを拡大"
+                title="拡大"
+              >
+                ＋
+              </button>
+              <button type="button" onClick={() => applyZoom(1)} disabled={zoom === 1} title="全体を表示">
+                全体
+              </button>
+            </div>
+          </div>
+      </div>
 
       <div
         ref={scrollRef}

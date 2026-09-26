@@ -845,7 +845,8 @@ export default function App() {
           />
         </div>
 
-        <main className="app__main">
+        {/* 「このカットだけ」があるときは、PC ではプレビューの右横に置く */}
+        <main className={`app__main${ready && selected ? ' app__main--cut' : ''}`}>
           <section className="panel panel--stage">
             <div className="stage__frame" ref={stageFrameRef}>
             <canvas
@@ -946,24 +947,6 @@ export default function App() {
                   中止
                 </button>
               )}
-              {analysis && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const blob = new Blob([analysisToJson(analysis)], {
-                      type: 'application/json',
-                    });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = 'beats.json';
-                    link.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 10000);
-                  }}
-                >
-                  解析結果を保存
-                </button>
-              )}
             </div>
             {exportProgress !== null && exportMode === 'realtime' && (
               <p className="muted">
@@ -1024,6 +1007,15 @@ export default function App() {
                 if (anchor) setAnalysis(rebuildGrid(analysis, bpm, anchor));
               }}
               onGridShift={shiftBeatGrid}
+              onSaveBeats={() => {
+                const blob = new Blob([analysisToJson(analysis)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'beats.json';
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+              }}
             >
               <SyncTools
                 analysis={analysis}

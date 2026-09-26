@@ -92,10 +92,10 @@ export default function SyncTools({
               <i className="drift--bad" />{' '}
               {drift.boundaries.filter((d) => d.level === 'bad').length}
             </span>
-            {offset !== null && (
+            {worthShifting && (
               <span className="muted">
-                全体で {ms(offset)}
-                {worthShifting && (offset > 0 ? '（画が遅い）' : '（画が早い）')}
+                全体で {ms(offset as number)}
+                {(offset as number) > 0 ? '（画が遅い）' : '（画が早い）'}
               </span>
             )}
             {worthShifting && (

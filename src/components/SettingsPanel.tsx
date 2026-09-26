@@ -58,7 +58,7 @@ export default function SettingsPanel({
       </div>
       <p className="global__note">
         ここは全カットに効きます。1 カットだけ変えるときは、タイムラインでカットを選んで
-        プレビューの下の「このカットだけ」で調整します。
+        プレビューの横（スマホでは下）の「このカットだけ」で調整します。
       </p>
 
       <label className="field">

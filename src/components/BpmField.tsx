@@ -140,7 +140,9 @@ export default function BpmField({ bpm, onChange, onShift, anchorLabel }: Props)
         </button>
       </div>
 
-      <span className="bpm__pivot muted">基準: {pivot}</span>
+      <span className="bpm__pivot muted" title={`BPM を変えても${pivot}は動きません`}>
+        基準: {anchorLabel ?? '最初のカット'}
+      </span>
     </div>
   );
 }
