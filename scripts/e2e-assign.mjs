@@ -31,12 +31,26 @@ await page.waitForTimeout(300);
 const after = await cutPhoto(3);
 console.log('cut3 changed by click-assign :', before !== after && after === poolSrc);
 
-// クリック割り当て後に選択が次のカットへ進むか
+// クリック割り当て後も選択はそのカットに留まる（差し替わったのが見えるように）
 const selectedIndex = await page.evaluate(() => {
   const all = [...document.querySelectorAll('.segments .segment')];
   return all.findIndex((el) => el.classList.contains('segment--selected')) + 1;
 });
-console.log('selection advanced to cut    :', selectedIndex);
+console.log('selection stays on cut       :', selectedIndex);
+const notice = (await page.textContent('.cut__notice'))?.trim();
+console.log('notice                       :', notice);
+const currentInPool = await page.evaluate(
+  () => document.querySelector('.tray__item--current img')?.getAttribute('src') ?? null,
+);
+console.log('pool marks the current photo :', currentInPool === poolSrc);
+
+// 同じ写真をもう一度押しても、ほかのカットは変わらない
+const cut4Before = await cutPhoto(4);
+await page.click('.tray__item:nth-child(12) .tray__assign');
+await page.waitForTimeout(300);
+const cut4After = await cutPhoto(4);
+const sameNotice = (await page.textContent('.cut__notice'))?.trim();
+console.log('re-click leaves cut 4 alone  :', cut4Before === cut4After, '/', sameNotice);
 
 // 「1 枚あたりの拍数」を変えても割り当てが残るか
 await page.fill('.field input[type=range]', '6');
@@ -56,5 +70,10 @@ await page.screenshot({ path: `${SHOTS}/assign.png` });
 await browser.close();
 
 if (after !== poolSrc) throw new Error('クリック割り当てが効いていない');
+if (selectedIndex !== 3) throw new Error('割り当て後に選択が別のカットへ移った');
+if (!notice?.includes('差し替えました')) throw new Error('差し替えの知らせが出ていない');
+if (currentInPool !== poolSrc) throw new Error('プールで選択中のカットの素材が示されていない');
+if (cut4Before !== cut4After) throw new Error('もう一度押すと次のカットが変わってしまう');
+if (!sameNotice?.includes('すでに')) throw new Error('同じ素材のときの知らせが出ていない');
 if (afterRebuild !== poolSrc) throw new Error('設定変更で割り当てが消えた');
 console.log('ASSIGN OK');

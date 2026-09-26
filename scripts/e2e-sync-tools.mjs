@@ -41,8 +41,8 @@ const expect = (label, ok, detail = '') => {
 };
 
 const score = async () => {
-  const text = (await page.textContent('.sync__score b')) ?? '';
-  const [good, measured] = text.split('/').map((v) => Number(v.trim()));
+  const good = Number(await page.getAttribute('.sync__score', 'data-good'));
+  const measured = Number(await page.getAttribute('.sync__score', 'data-measured'));
   return { good, measured };
 };
 const median = async () => {
@@ -56,6 +56,21 @@ const bpm = async () => Number(await page.inputValue('.bpm input'));
 const initial = await score();
 console.log(`     検出直後: ${initial.good}/${initial.measured}  BPM ${await bpm()}`);
 expect('クリック音源なら境目はほぼ一致', initial.good >= initial.measured * 0.8, `${initial.good}/${initial.measured}`);
+
+// 凡例は色だけでなく言葉でも意味が分かる
+const legend = (await page.textContent('.drift-legend'))?.replace(/\s+/g, ' ').trim();
+console.log('     凡例:', legend);
+expect('凡例に「音なし」まで言葉で出る', ['合う', '少しずれ', 'ずれ', '音なし'].every((w) => legend.includes(w)));
+
+// ルーラーの ▲ にマウスを乗せると、そのカットのずれが出る
+{
+  const cut = await page.locator('.segments .segment').nth(2).boundingBox();
+  const rulerBox = await page.locator('.timeline__ruler').boundingBox();
+  await page.mouse.move(cut.x, rulerBox.y + rulerBox.height - 4);
+  const title = await page.getAttribute('.timeline__ruler', 'title');
+  console.log('     ▲ の説明:', title);
+  expect('▲ にマウスを乗せると説明が出る', title?.startsWith('カット 3 への切り替わり'));
+}
 
 // 最初のカットを基準に BPM を崩すと、後ろほどずれて一致が減る
 await page.locator('.segments .segment').nth(0).click();
