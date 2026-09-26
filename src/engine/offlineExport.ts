@@ -122,7 +122,8 @@ export async function exportOffline(
     prepareMedia(render.media, width, height),
     audioForOpus(audioFile),
   ]);
-  const job: RenderContext = { ...render, media };
+  // プレビュー用の縮めた画像ではなく、書き出し用に用意した画像で描く
+  const job: RenderContext = { ...render, media, imageFor: undefined };
   pauseAllVideos(job.media);
 
   const output = new Output({ format: new WebMOutputFormat(), target: new BufferTarget() });

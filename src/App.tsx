@@ -37,6 +37,7 @@ import { pauseAllVideos, syncVideos } from './engine/videoSync';
 import { applyOverrides, buildSegments } from './engine/segments';
 import { alignToTwoPoints, rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
 import { startMetronome } from './engine/metronome';
+import { onPreviewReady, prefetchAround, previewImage } from './engine/previewImages';
 import { measureDrift, snapToOnset } from './engine/onsets';
 import {
   DEFAULT_SETTINGS,
@@ -221,7 +222,10 @@ export default function App() {
     : 0;
 
   const renderContext = useMemo(
-    () => (analysis ? { segments, media: mediaMap, analysis, settings, focus } : null),
+    () =>
+      analysis
+        ? { segments, media: mediaMap, analysis, settings, focus, imageFor: previewImage }
+        : null,
     [segments, mediaMap, analysis, settings, focus],
   );
 
@@ -246,6 +250,8 @@ export default function App() {
       const time = audio.currentTime;
       playheadRef.current = time;
       syncVideos(renderContext, time, true, transitionSeconds);
+      // 次に映るカットの写真は、先にプレビュー用の大きさにしておく
+      prefetchAround(renderContext.segments, renderContext.media, time);
       renderFrame(ctx, time, renderContext);
 
       // 再生位置は DOM を直接更新して配る（React の再描画を挟まない）
@@ -265,16 +271,23 @@ export default function App() {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
     syncVideos(renderContext, currentTime, false, transitionSeconds);
+    prefetchAround(renderContext.segments, renderContext.media, currentTime, false);
     renderFrame(ctx, currentTime, renderContext);
+
+    const redraw = () => renderFrame(ctx, currentTime, renderContext);
+    // プレビュー用の写真ができたら、代役から描き直す
+    const offReady = onPreviewReady(redraw);
 
     // 動画はシークが終わってから描かないと、前のコマのままになる
     const pending = renderContext.segments[segmentAt(renderContext.segments, currentTime)];
     const item = pending ? renderContext.media.get(pending.mediaId) : undefined;
-    if (item?.kind !== 'video') return;
+    if (item?.kind !== 'video') return offReady;
     const video = item.element as HTMLVideoElement;
-    const redraw = () => renderFrame(ctx, currentTime, renderContext);
     video.addEventListener('seeked', redraw);
-    return () => video.removeEventListener('seeked', redraw);
+    return () => {
+      offReady();
+      video.removeEventListener('seeked', redraw);
+    };
   }, [renderContext, playing, currentTime, transitionSeconds]);
 
   const seek = useCallback((time: number) => {
@@ -314,20 +327,16 @@ export default function App() {
     [segments, selectCut],
   );
 
-  // 選択は常に「いまプレビューに映っているカット」に合わせる。
-  // ルーラーのクリックや再生・停止で位置だけが動いても、選択が取り残されない。
+  // 選択は「いまプレビューに映っているカット」に合わせる。
+  // ルーラーのクリックや停止で位置だけが動いても、選択が取り残されない。
+  //
+  // 再生中は合わせない。切り替わりのたびに選択を動かすと画面全体
+  // （パネル・素材一覧・タイムライン）を作り直すことになり、ちょうど切り替わりの
+  // 瞬間にプレビューが止まっていた。停止すると、その位置のカットが選ばれる。
   useEffect(() => {
-    if (segments.length === 0) return;
-    const follow = (time: number) => {
-      const visible = segments[segmentAt(segments, time)];
-      if (visible) setSelectedId((current) => (current === visible.id ? current : visible.id));
-    };
-    if (!playing) {
-      follow(currentTime);
-      return;
-    }
-    // 再生中はカットが変わったときだけ React の状態を動かす
-    return onPlayhead(follow);
+    if (segments.length === 0 || playing) return;
+    const visible = segments[segmentAt(segments, currentTime)];
+    if (visible) setSelectedId((current) => (current === visible.id ? current : visible.id));
   }, [segments, playing, currentTime]);
 
   /**
@@ -868,6 +877,16 @@ export default function App() {
             hasSelection={selectedId !== null}
             currentMediaId={selected?.mediaId ?? null}
             onAssign={(mediaId) => {
+              // 再生中は選択が映っているカットに付いてこないので、止めてから
+              // いま映っているカットに当てはめる
+              const audio = audioRef.current;
+              if (audio && !audio.paused) {
+                const time = audio.currentTime;
+                audio.pause();
+                const visible = segments[segmentAt(segments, time)];
+                if (visible) assignPhoto(visible.id, mediaId);
+                return;
+              }
               if (selectedId) assignPhoto(selectedId, mediaId);
             }}
             onDropCut={(cutIndex, mediaId) => {
@@ -1008,6 +1027,7 @@ export default function App() {
 
           {ready && selected && (
             <CutPanel
+              playing={playing}
               selected={selected}
               index={selectedIndex}
               count={segments.length}

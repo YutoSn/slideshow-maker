@@ -63,7 +63,8 @@ async function exportRealtime(
   if (!ctx) throw new Error('2D コンテキストを取得できませんでした');
 
   const { media, release } = await prepareMedia(render.media, width, height);
-  const job: RenderContext = { ...render, media };
+  // プレビュー用の縮めた画像ではなく、書き出し用に用意した画像で描く
+  const job: RenderContext = { ...render, media, imageFor: undefined };
 
   const audio = new Audio(URL.createObjectURL(audioFile));
   audio.crossOrigin = 'anonymous';
