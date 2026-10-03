@@ -1,9 +1,13 @@
+import { readCaptureDate } from './captureDate';
 import type { MediaItem } from './types';
 
 /**
  * ファイルから、canvas に描ける素材を作る。
  * 写真は img、動画は video。動画は一覧用にサムネイルも切り出す。
  */
+
+/** 画像・動画として読み込んだもの。撮影日時は loadMedia() で別に読んで足す */
+type LoadedMedia = Omit<MediaItem, 'takenAt' | 'takenAtSource'>;
 
 export function mediaIdFor(file: File): string {
   return `${file.name}-${file.size}-${file.lastModified}`;
@@ -105,7 +109,7 @@ function decodeImage(url: string): Promise<HTMLImageElement | null> {
  * HEIC は Safari ならそのまま表示できるので、まずはそのまま試し、
  * 表示できなければ JPEG に変換してから読み込む。
  */
-async function loadPhoto(file: File, url: string): Promise<MediaItem | null> {
+async function loadPhoto(file: File, url: string): Promise<LoadedMedia | null> {
   let source: Blob = file;
   let image = await decodeImage(url);
   if (!image && isHeicFile(file)) {
@@ -152,7 +156,7 @@ function grabThumbnail(video: HTMLVideoElement): string {
   return canvas.toDataURL('image/jpeg', 0.7);
 }
 
-function loadVideo(file: File, url: string): Promise<MediaItem | null> {
+function loadVideo(file: File, url: string): Promise<LoadedMedia | null> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.src = url;
@@ -162,7 +166,7 @@ function loadVideo(file: File, url: string): Promise<MediaItem | null> {
     video.crossOrigin = 'anonymous';
 
     let settled = false;
-    const done = (item: MediaItem | null) => {
+    const done = (item: LoadedMedia | null) => {
       if (settled) return;
       settled = true;
       resolve(item);
@@ -212,12 +216,21 @@ function loadVideo(file: File, url: string): Promise<MediaItem | null> {
 }
 
 /** 画像でも動画でも受け取れる読み込み口。対応していないものは null。 */
-export function loadMedia(file: File): Promise<MediaItem | null> {
+export async function loadMedia(file: File): Promise<MediaItem | null> {
+  const kind = file.type.startsWith('video/')
+    ? 'video'
+    : file.type.startsWith('image/') || isHeicFile(file)
+      ? 'photo'
+      : null;
+  if (!kind) return null;
+
   const url = URL.createObjectURL(file);
-  if (file.type.startsWith('video/')) return loadVideo(file, url);
-  if (file.type.startsWith('image/') || isHeicFile(file)) return loadPhoto(file, url);
-  URL.revokeObjectURL(url);
-  return Promise.resolve(null);
+  // 撮影日時は元のファイルから読む（HEIC を JPEG に変換すると EXIF が残らないため）
+  const [item, taken] = await Promise.all([
+    kind === 'video' ? loadVideo(file, url) : loadPhoto(file, url),
+    readCaptureDate(file, kind),
+  ]);
+  return item ? { ...item, takenAt: taken.time, takenAtSource: taken.source } : null;
 }
 
 export function isMediaFile(file: File): boolean {
