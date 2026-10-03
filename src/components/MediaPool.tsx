@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { MediaItem } from '../engine/types';
+import { isMediaFile } from '../engine/loadMedia';
 
 interface Props {
   photos: MediaItem[];
@@ -59,11 +60,7 @@ export default function MediaPool({
           const files = e.dataTransfer.files;
           const audio = Array.from(files).find((f) => f.type.startsWith('audio/'));
           if (audio) onAudio(audio);
-          if (
-            Array.from(files).some(
-              (f) => f.type.startsWith('image/') || f.type.startsWith('video/'),
-            )
-          ) {
+          if (Array.from(files).some(isMediaFile)) {
             onPhotos(files);
           }
         }}
@@ -71,7 +68,7 @@ export default function MediaPool({
       >
         <p className="dropzone__title">写真・動画と音源をここにドロップ</p>
         <p className="dropzone__hint">
-          JPEG / PNG / MP4 と MP3 などをまとめて置けます。素材は何点でも足せます
+          JPEG / PNG / HEIC / MP4 と MP3 などをまとめて置けます。素材は何点でも足せます
         </p>
       </div>
 
@@ -87,7 +84,7 @@ export default function MediaPool({
       <input
         ref={photoInput}
         type="file"
-        accept="image/*,video/*"
+        accept="image/*,video/*,.heic,.heif"
         multiple
         hidden
         onChange={(e) => {

@@ -159,7 +159,7 @@ export default function App() {
       const skipped = results.length - next.length;
       if (skipped > 0) {
         setError(
-          `${skipped} 件はブラウザが対応しない形式のため読み飛ばしました（HEIC など）`,
+          `${skipped} 件は読み込めない形式か、壊れたファイルのため読み飛ばしました`,
         );
       }
       setPhotos((current) => {
