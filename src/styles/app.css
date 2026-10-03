@@ -189,6 +189,11 @@ select, input[type='number'] {
 
 .stage__frame { display: block; }
 .stage { width: 100%; aspect-ratio: 16 / 9; display: block; background: #07070b; border-radius: 8px; cursor: pointer; }
+/* 縦長は幅いっぱいにすると画面より高くなるので、高さで決めて中央に置く */
+.stage.stage--portrait {
+  width: auto; height: min(70vh, 640px); max-width: 100%;
+  aspect-ratio: 9 / 16; margin: 0 auto;
+}
 .stage__empty { text-align: center; color: var(--muted); margin: 10px 0 0; font-size: 13px; }
 
 .transport { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
@@ -366,6 +371,16 @@ select, input[type='number'] {
   /* プレビューは残りの高さを使う。ただし潰れて見えなくならないよう下限を設ける */
   .panel--stage { flex: 1; min-height: 240px; display: flex; flex-direction: column; }
 
+  /* 縦長は、残りの高さに 9:16 を収める（幅で決めると画面より高くなり、下の操作が隠れる） */
+  .stage__frame--portrait {
+    flex: 1; min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage__frame--portrait .stage.stage--portrait {
+    width: auto; height: 100%;
+    max-width: 100%; max-height: 100%;
+  }
+
   /*
    * 「このカットだけ」は、プレビューの右横に置く。
    * プレビューは 16:9 なので横に余りが出る。縦に積むとプレビューの高さを奪い、
@@ -396,11 +411,12 @@ select, input[type='number'] {
     flex: 1; min-height: 0;
     display: flex; align-items: center; justify-content: center;
   }
-  .stage {
+  .stage, .stage.stage--portrait {
     width: auto; height: 100%;
     max-width: 100%; max-height: 100%;
     aspect-ratio: 16 / 9;
   }
+  .stage.stage--portrait { aspect-ratio: 9 / 16; }
 
   .app__side::-webkit-scrollbar { width: 10px; }
   .app__side::-webkit-scrollbar-thumb {

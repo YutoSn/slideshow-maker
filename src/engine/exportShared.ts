@@ -20,6 +20,14 @@ export interface ExportOptions {
  */
 export type ExportMode = 'offline' | 'realtime';
 
+/** 書き出した動画の入れ物。MP4 を優先し、作れないブラウザでは WebM になる */
+export type ExportContainer = 'mp4' | 'webm';
+
+export interface ExportResult {
+  blob: Blob;
+  container: ExportContainer;
+}
+
 /** 進捗表示を更新する間隔（ms）。毎フレーム画面全体を描き直すと録画が詰まる */
 export const PROGRESS_INTERVAL_MS = 250;
 

@@ -264,7 +264,7 @@ function beatShake(
   time: number,
   analysis: BeatAnalysis,
   amount: number,
-  width: number,
+  size: number,
 ): { x: number; y: number } {
   if (!Number.isFinite(amount) || amount <= 0) return { x: 0, y: 0 };
   const period = 60 / analysis.bpm;
@@ -273,7 +273,7 @@ function beatShake(
   if (since < 0) return { x: 0, y: 0 };
   const decay = Math.exp(-since * 14);
   const random = seededRandom(1013 + index * 7919);
-  const scale = amount * width * 0.03 * decay;
+  const scale = amount * size * 0.03 * decay;
   return { x: (random() - 0.5) * 2 * scale, y: (random() - 0.5) * 2 * scale };
 }
 
@@ -304,7 +304,8 @@ export function renderFrame(
 
   const pulse = beatPulse(time, analysis, settings.beatPulse);
   const transitionSeconds = (settings.transitionBeats * 60) / analysis.bpm;
-  const shake = beatShake(time, analysis, settings.shake, width);
+  // 縦長でも横長と同じ揺れ幅に見えるよう、長い辺を基準にする
+  const shake = beatShake(time, analysis, settings.shake, Math.max(width, height));
 
   // 揺れと色味は 1 フレームまとめて適用する。写真ごとにかけるより軽い
   ctx.save();

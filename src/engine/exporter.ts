@@ -1,23 +1,38 @@
 import type { BeatAnalysis } from './beatDetect';
-import { PROGRESS_INTERVAL_MS, prepareMedia, type ExportOptions } from './exportShared';
+import {
+  PROGRESS_INTERVAL_MS,
+  prepareMedia,
+  type ExportContainer,
+  type ExportOptions,
+  type ExportResult,
+} from './exportShared';
 import { createMediaClock } from './mediaClock';
 import { renderFrame, type RenderContext } from './renderer';
 import { pauseAllVideos, syncVideos } from './videoSync';
 import { fixWebmDuration } from './webmDuration';
 
-export { ExportAborted, type ExportMode, type ExportOptions } from './exportShared';
+export {
+  ExportAborted,
+  type ExportContainer,
+  type ExportMode,
+  type ExportOptions,
+  type ExportResult,
+} from './exportShared';
 
+export type QualityPreset = 'full' | 'high' | 'standard' | 'light';
 
-
-export type QualityPreset = 'high' | 'standard' | 'light';
-
+/**
+ * 画質の段階。大きさは短い辺で決め、向き（横長・縦長）は書き出し時に当てはめる
+ * （`frameSize()`）。縦長でも画素数は同じなので、ビットレートも同じでよい。
+ */
 export const QUALITY_PRESETS: Record<
   QualityPreset,
-  { label: string; width: number; height: number; videoBitsPerSecond: number }
+  { label: string; shortSide: number; videoBitsPerSecond: number }
 > = {
-  high: { label: '高画質（720p）', width: 1280, height: 720, videoBitsPerSecond: 4_000_000 },
-  standard: { label: '標準（720p）', width: 1280, height: 720, videoBitsPerSecond: 1_500_000 },
-  light: { label: '軽量（540p）', width: 960, height: 540, videoBitsPerSecond: 600_000 },
+  full: { label: '最高画質（1080p）', shortSide: 1080, videoBitsPerSecond: 8_000_000 },
+  high: { label: '高画質（720p）', shortSide: 720, videoBitsPerSecond: 4_000_000 },
+  standard: { label: '標準（720p）', shortSide: 720, videoBitsPerSecond: 1_500_000 },
+  light: { label: '軽量（540p）', shortSide: 540, videoBitsPerSecond: 600_000 },
 };
 
 /** 書き出し後のおおよそのファイルサイズ（MB）。 */
@@ -29,13 +44,15 @@ export function estimateSizeMb(
   return ((videoBitsPerSecond + audioBitsPerSecond) * durationSeconds) / 8 / 1e6;
 }
 
-/** ブラウザが実際に書き出せる形式を選ぶ。 */
+/** ブラウザが実際に書き出せる形式を選ぶ。スマホや SNS で扱いやすい MP4 を優先する。 */
 function pickMimeType(): string {
   const candidates = [
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4;codecs=avc1,opus',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
-    'video/mp4',
   ];
   for (const type of candidates) {
     if (MediaRecorder.isTypeSupported(type)) return type;
@@ -52,7 +69,7 @@ async function exportRealtime(
   render: RenderContext,
   audioFile: File,
   options: ExportOptions,
-): Promise<Blob> {
+): Promise<ExportResult> {
   const { width, height, fps, videoBitsPerSecond, audioBitsPerSecond, onProgress, signal } =
     options;
 
@@ -98,6 +115,7 @@ async function exportRealtime(
   for (const t of destination.stream.getAudioTracks()) stream.addTrack(t);
 
   const mimeType = pickMimeType();
+  const container: ExportContainer = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
   const recorder = new MediaRecorder(stream, {
     ...(mimeType ? { mimeType } : {}),
     videoBitsPerSecond,
@@ -124,7 +142,8 @@ async function exportRealtime(
   };
 
   const finished = new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
+    recorder.onstop = () =>
+      resolve(new Blob(chunks, { type: container === 'mp4' ? 'video/mp4' : 'video/webm' }));
     recorder.onerror = () => reject(new Error('録画中にエラーが発生しました'));
   });
 
@@ -177,20 +196,22 @@ async function exportRealtime(
 
   try {
     const recorded = await finished;
-    // MediaRecorder は総再生時間を書かないので、ここで補ってから返す
-    return await fixWebmDuration(recorded, audio.currentTime || duration);
+    if (container === 'mp4') return { blob: recorded, container };
+    // MediaRecorder の WebM には総再生時間が書かれないので、ここで補ってから返す
+    const blob = await fixWebmDuration(recorded, audio.currentTime || duration);
+    return { blob, container };
   } finally {
     cleanup();
   }
 }
 
-/** WebCodecs で書き出せるなら、その実装（書き出し時にだけ読み込む）と使うコーデックを返す。 */
+/** WebCodecs で書き出せるなら、その実装（書き出し時にだけ読み込む）と使う形式を返す。 */
 async function loadOfflineExport(options: ExportOptions) {
   if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined') return null;
   try {
     const module = await import('./offlineExport');
-    const codec = await module.offlineVideoCodec(options);
-    return codec ? { module, codec } : null;
+    const codecs = await module.offlineCodecs(options);
+    return codecs ? { module, codecs } : null;
   } catch {
     // 読み込めない・判定できないときは録画方式に任せる
     return null;
@@ -202,11 +223,12 @@ export async function exportVideo(
   render: RenderContext,
   audioFile: File,
   options: ExportOptions,
-): Promise<Blob> {
+): Promise<ExportResult> {
   const offline = await loadOfflineExport(options);
   if (offline) {
     options.onMode?.('offline');
-    return offline.module.exportOffline(render, audioFile, options, offline.codec);
+    const blob = await offline.module.exportOffline(render, audioFile, options, offline.codecs);
+    return { blob, container: offline.codecs.container };
   }
   options.onMode?.('realtime');
   return exportRealtime(render, audioFile, options);

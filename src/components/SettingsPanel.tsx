@@ -1,5 +1,11 @@
 import { FIT_LABELS, TRANSITION_LABELS } from './labels';
-import type { BackgroundKind, FitMode, LookFilter, ProjectSettings } from '../engine/types';
+import type {
+  AspectRatio,
+  BackgroundKind,
+  FitMode,
+  LookFilter,
+  ProjectSettings,
+} from '../engine/types';
 
 /** 個別に上書きされているカットの数（全体の設定が効かないカット） */
 export interface OverrideCounts {
@@ -24,6 +30,11 @@ function Overridden({ count }: { count: number }) {
   if (count === 0) return null;
   return <em className="overridden">{count} カットは個別設定が優先</em>;
 }
+
+const ASPECT_LABELS: Record<AspectRatio, string> = {
+  landscape: '横長 16:9（PC・テレビ・YouTube）',
+  portrait: '縦長 9:16（スマホ・ショート・ストーリーズ）',
+};
 
 const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
   blur: '写真をぼかして敷く',
@@ -60,6 +71,20 @@ export default function SettingsPanel({
         ここは全カットに効きます。1 カットだけ変えるときは、タイムラインでカットを選んで
         プレビューの横（スマホでは下）の「このカットだけ」で調整します。
       </p>
+
+      <label className="field">
+        <span>画面の向き</span>
+        <select
+          value={settings.aspect}
+          onChange={(e) => onChange({ aspect: e.target.value as AspectRatio })}
+        >
+          {(Object.keys(ASPECT_LABELS) as AspectRatio[]).map((aspect) => (
+            <option key={aspect} value={aspect}>
+              {ASPECT_LABELS[aspect]}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label className="field">
         <span>

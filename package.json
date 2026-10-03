@@ -15,8 +15,9 @@
     "bench": "node scripts/bench-mobile.mjs"
   },
   "dependencies": {
+    "@mediabunny/aac-encoder": "^1.61.0",
     "heic-to": "^1.6.5",
-    "mediabunny": "^1.60.0",
+    "mediabunny": "^1.61.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

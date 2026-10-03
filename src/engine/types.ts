@@ -57,6 +57,24 @@ export type LookFilter = 'none' | 'mono' | 'sepia' | 'vivid' | 'warm' | 'cool';
  */
 export type FitMode = 'cover' | 'contain';
 
+/**
+ * 画面の向き。プレビューと書き出しの両方に効く。
+ * landscape: 横長 16:9（PC・テレビ・YouTube 向け）
+ * portrait: 縦長 9:16（スマホ・ショート動画・ストーリーズ向け）
+ */
+export type AspectRatio = 'landscape' | 'portrait';
+
+/** 短い辺の長さから、向きに合わせた画面の大きさを求める（16:9 / 9:16）。 */
+export function frameSize(aspect: AspectRatio, shortSide: number): { width: number; height: number } {
+  // 符号化器（H.264 など）は奇数の大きさを受け付けないので偶数にそろえる
+  const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+  const longSide = even((shortSide * 16) / 9);
+  const short = even(shortSide);
+  return aspect === 'portrait'
+    ? { width: short, height: longSide }
+    : { width: longSide, height: short };
+}
+
 /** contain で余白ができたときの、背景の埋め方。 */
 export type BackgroundKind = 'black' | 'white' | 'blur' | 'color';
 
@@ -81,6 +99,8 @@ export interface Segment {
 }
 
 export interface ProjectSettings {
+  /** 画面の向き（横長 16:9 / 縦長 9:16） */
+  aspect: AspectRatio;
   /** 1 枚あたりの拍数 */
   beatsPerPhoto: number;
   /** トランジションの長さ（拍） */
@@ -107,6 +127,7 @@ export interface ProjectSettings {
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
+  aspect: 'landscape',
   beatsPerPhoto: 8,
   transitionBeats: 1,
   beatPulse: 0.035,
@@ -139,6 +160,7 @@ export function normalizeSettings(stored: Partial<ProjectSettings> | null | unde
 
   return {
     ...merged,
+    aspect: merged.aspect === 'portrait' ? 'portrait' : 'landscape',
     beatsPerPhoto: number(merged.beatsPerPhoto, DEFAULT_SETTINGS.beatsPerPhoto),
     transitionBeats: number(merged.transitionBeats, DEFAULT_SETTINGS.transitionBeats),
     beatPulse: number(merged.beatPulse, DEFAULT_SETTINGS.beatPulse),

@@ -22,7 +22,7 @@
 - **収め方の選択** — 画面いっぱい（cover）／全体を収める（contain）を全体・カット単位で切り替え。余白の背景は ぼかし／黒／白／任意の色
 - **タイムライン編集** — 拡大・縮小して、カットごとに尺（拍数）とトランジションを個別調整
 - **BPM の手直し** — 直接入力、±1 / ±0.1、倍・半分の切り替え
-- **動画書き出し** — WebM 動画としてダウンロード（画質 3 段階、目安サイズ表示つき）
+- **動画書き出し** — MP4（H.264 / AAC）でダウンロード。横長 16:9 と縦長 9:16（スマホ・ショート向け）、画質は 1080p〜540p の 4 段階（目安サイズ表示つき）
 - **プロジェクトの保存** — 写真・音源・編集内容をブラウザに自動保存し、開き直すと続きから再開できる
 - **解析結果の書き出し** — BPM・ビート位置を JSON で保存
 
@@ -57,7 +57,7 @@ npm run dev     # 開かずにサーバーだけ起動
 2. 「1 枚あたりの拍数」やトランジションで全体の雰囲気を決める
 3. 写真プールからカットへ写真を当てはめる（クリック、またはドラッグ＆ドロップ）
 4. カット単位で尺とトランジションを微調整
-5. 画質を選んで「動画を書き出す」で WebM を保存
+5. 画面の向き（横長 16:9 / 縦長 9:16）と画質を選んで「動画を書き出す」で MP4 を保存
 
 ### 写真の用意について
 
@@ -113,13 +113,22 @@ canvas に毎フレーム描画します。写真は縦横比を保ったまま�
 ### 書き出し（`src/engine/exporter.ts`）
 
 WebCodecs が使えるブラウザ（Chrome・Edge など）では、1/30 秒ごとの時刻で 1 コマずつ描いて
-`VideoEncoder`（VP9、無ければ VP8）で符号化し、音源は `AudioEncoder`（Opus）で符号化して
-WebM にまとめます（多重化は [mediabunny](https://mediabunny.dev/)、書き出し時にだけ読み込み）。
+`VideoEncoder` で符号化し、音源は `AudioEncoder` で符号化して 1 本の動画にまとめます
+（多重化は [mediabunny](https://mediabunny.dev/)、書き出し時にだけ読み込み）。
+
+形式は **MP4（H.264 + AAC）を優先**します（`src/engine/offlineExport.ts` の `CANDIDATES`）。
+iPhone の写真アプリや LINE・SNS へそのまま渡せるためです。目次（`moov`）はファイルの先頭に置き、
+読み込みながら再生できるようにしています。AAC を符号化できないブラウザ（Firefox や Linux 版 Chromium など）では、
+WebAssembly 版の AAC 符号化器（`@mediabunny/aac-encoder`、約 1MB）をそのときだけ読み込みます。
+H.264 を符号化できないブラウザでは、従来どおり WebM（VP9 / VP8 + Opus）で書き出し、画面にその旨を出します。
+
+画面の大きさは、画質の段階（短い辺 1080 / 720 / 540）と全体設定の「画面の向き」から
+`frameSize()`（`src/engine/types.ts`）で決めます。縦長でも画素数は同じなので、ビットレートは共通です。
 コマの時刻が正確なのでカクつかず、多くの場合は曲の長さより早く終わります。
 動画クリップはコマごとにシークして、そのコマが出てから描きます。
 
 WebCodecs が使えないブラウザでは、`canvas.captureStream()` と音声を 1 本の MediaStream にまとめ、
-`MediaRecorder` で録画します。実時間でしか録れないため、曲の長さぶんの時間がかかります。
+`MediaRecorder` で録画します（MP4 で録れるブラウザでは MP4、無理なら WebM）。実時間でしか録れないため、曲の長さぶんの時間がかかります。
 
 `MediaRecorder` の出力する WebM には総再生時間（Duration）が書かれておらず、
 そのままではプレイヤーで長さが分からずシークできません。
@@ -142,6 +151,7 @@ node scripts/e2e-video.mjs                  # 動画の同期・開始位置・�
 node scripts/e2e-legacy-project.mjs         # 古い版で保存したプロジェクトを開けるか確認
 node scripts/bench-mobile.mjs               # スマホ相当（CPU 4 倍遅い）でのフレーム時間を測る
 node scripts/e2e-export-video.mjs           # 書き出した動画の中で動画クリップが動いているか確認
+node scripts/e2e-export-format.mjs          # 書き出しの形式（MP4／WebM）と、縦長・1080p の大きさを確認（ffprobe を使う）
 node scripts/make-demo-audio.mjs            # 確認用の短いクリック音源を生成
 node scripts/make-demo-video.mjs            # 動作確認用の動画クリップを生成
 node scripts/e2e-assign.mjs                 # 写真の割り当てを確認
