@@ -2,17 +2,21 @@ import {
   AudioBufferSource,
   BufferTarget,
   CanvasSource,
+  Mp4OutputFormat,
   Output,
   Quality,
   WebMOutputFormat,
   canEncodeAudio,
   canEncodeVideo,
+  type AudioCodec,
+  type VideoCodec,
 } from 'mediabunny';
 import { decodeAudioFile } from './audio';
 import {
   ExportAborted,
   PROGRESS_INTERVAL_MS,
   prepareMedia,
+  type ExportContainer,
   type ExportOptions,
 } from './exportShared';
 import { renderFrame, segmentAt, type RenderContext } from './renderer';
@@ -24,38 +28,73 @@ import { clipTimeFor, pauseAllVideos } from './videoSync';
  * （exporter.ts から動的に import される）。
  */
 
-/** WebCodecs で書き出せるなら、使う映像コーデックを返す。 */
-export async function offlineVideoCodec(options: ExportOptions): Promise<'vp9' | 'vp8' | null> {
+/** 書き出しに使う入れ物とコーデックの組み合わせ */
+export interface OfflineCodecs {
+  container: ExportContainer;
+  video: VideoCodec;
+  audio: AudioCodec;
+}
+
+/**
+ * MP4（H.264 + AAC）を優先する。iPhone の写真アプリや LINE・SNS へそのまま渡せるため。
+ * H.264 を符号化できないブラウザでは、従来の WebM（VP9 / VP8 + Opus）にする。
+ */
+const CANDIDATES: OfflineCodecs[] = [
+  { container: 'mp4', video: 'avc', audio: 'aac' },
+  { container: 'webm', video: 'vp9', audio: 'opus' },
+  { container: 'webm', video: 'vp8', audio: 'opus' },
+];
+
+/** WebAssembly 版の AAC 符号化器を登録したか（何度も書き出すときに重ねて登録しない） */
+let aacEncoderRegistered = false;
+
+async function canEncodeAudioCodec(codec: AudioCodec, options: ExportOptions): Promise<boolean> {
+  const config = {
+    numberOfChannels: 2,
+    sampleRate: AUDIO_SAMPLE_RATE,
+    quality: new Quality({ bitrate: options.audioBitsPerSecond }),
+  };
+  if (await canEncodeAudio(codec, config)) return true;
+  if (codec !== 'aac' || aacEncoderRegistered) return false;
+  // AAC を符号化できないブラウザ（Firefox や Linux 版 Chromium など）では、
+  // WebAssembly 版の AAC 符号化器を足す。約 1MB あるので、要るときにだけ読み込む
   try {
-    const audioOk = await canEncodeAudio('opus', {
-      numberOfChannels: 2,
-      sampleRate: OPUS_SAMPLE_RATE,
-      quality: new Quality({ bitrate: options.audioBitsPerSecond }),
-    });
-    if (!audioOk) return null;
-    for (const codec of ['vp9', 'vp8'] as const) {
-      const videoOk = await canEncodeVideo(codec, {
+    const { registerAacEncoder } = await import('@mediabunny/aac-encoder');
+    registerAacEncoder();
+    aacEncoderRegistered = true;
+    return await canEncodeAudio(codec, config);
+  } catch {
+    return false;
+  }
+}
+
+/** WebCodecs で書き出せるなら、使う入れ物とコーデックを返す。 */
+export async function offlineCodecs(options: ExportOptions): Promise<OfflineCodecs | null> {
+  for (const candidate of CANDIDATES) {
+    try {
+      const videoOk = await canEncodeVideo(candidate.video, {
         width: options.width,
         height: options.height,
         frameRate: options.fps,
         quality: new Quality({ bitrate: options.videoBitsPerSecond }),
       });
-      if (videoOk) return codec;
+      if (!videoOk) continue;
+      if (await canEncodeAudioCodec(candidate.audio, options)) return candidate;
+    } catch {
+      // 判定できない組み合わせは飛ばす
     }
-  } catch {
-    // 読み込めない・判定できないときは録画方式に任せる
   }
   return null;
 }
 
-/** Opus は 48kHz で符号化する */
-const OPUS_SAMPLE_RATE = 48_000;
+/** 音声は 48kHz で符号化する（Opus はこれしか受け付けず、AAC もこれで問題ない） */
+const AUDIO_SAMPLE_RATE = 48_000;
 
-/** 音源を 48kHz・ステレオにそろえる（Opus の符号化器が受け付ける形） */
-async function audioForOpus(file: File): Promise<AudioBuffer> {
+/** 音源を 48kHz・ステレオにそろえる（符号化器が受け付ける形） */
+async function audioForEncoding(file: File): Promise<AudioBuffer> {
   const decoded = await decodeAudioFile(file);
-  const frames = Math.ceil(decoded.duration * OPUS_SAMPLE_RATE);
-  const offline = new OfflineAudioContext(2, Math.max(1, frames), OPUS_SAMPLE_RATE);
+  const frames = Math.ceil(decoded.duration * AUDIO_SAMPLE_RATE);
+  const offline = new OfflineAudioContext(2, Math.max(1, frames), AUDIO_SAMPLE_RATE);
   const source = offline.createBufferSource();
   source.buffer = decoded;
   source.connect(offline.destination);
@@ -107,7 +146,7 @@ export async function exportOffline(
   render: RenderContext,
   audioFile: File,
   options: ExportOptions,
-  videoCodec: 'vp9' | 'vp8',
+  codecs: OfflineCodecs,
 ): Promise<Blob> {
   const { width, height, fps, videoBitsPerSecond, audioBitsPerSecond, onProgress, signal } =
     options;
@@ -120,20 +159,25 @@ export async function exportOffline(
 
   const [{ media, release }, audioBuffer] = await Promise.all([
     prepareMedia(render.media, width, height),
-    audioForOpus(audioFile),
+    audioForEncoding(audioFile),
   ]);
   // プレビュー用の縮めた画像ではなく、書き出し用に用意した画像で描く
   const job: RenderContext = { ...render, media, imageFor: undefined };
   pauseAllVideos(job.media);
 
-  const output = new Output({ format: new WebMOutputFormat(), target: new BufferTarget() });
+  const format =
+    codecs.container === 'mp4'
+      ? // 先頭に目次（moov）を置く。スマホなどで読み込みながら再生できる
+        new Mp4OutputFormat({ fastStart: 'in-memory' })
+      : new WebMOutputFormat();
+  const output = new Output({ format, target: new BufferTarget() });
   const video = new CanvasSource(canvas, {
-    codec: videoCodec,
+    codec: codecs.video,
     quality: new Quality({ bitrate: videoBitsPerSecond }),
     keyFrameInterval: 2,
   });
   const audio = new AudioBufferSource({
-    codec: 'opus',
+    codec: codecs.audio,
     quality: new Quality({ bitrate: audioBitsPerSecond }),
   });
   output.addVideoTrack(video, { frameRate: fps });
@@ -174,7 +218,7 @@ export async function exportOffline(
 
     const buffer = output.target.buffer;
     if (!buffer) throw new Error('書き出した動画を取り出せませんでした');
-    return new Blob([buffer], { type: 'video/webm' });
+    return new Blob([buffer], { type: codecs.container === 'mp4' ? 'video/mp4' : 'video/webm' });
   } catch (cause) {
     if (output.state !== 'finalized' && output.state !== 'canceled') await output.cancel();
     throw cause;

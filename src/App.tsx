@@ -26,6 +26,7 @@ import {
   estimateSizeMb,
   ExportAborted,
   exportVideo,
+  type ExportContainer,
   type ExportMode,
   QUALITY_PRESETS,
   type QualityPreset,
@@ -41,7 +42,9 @@ import { onPreviewReady, prefetchAround, previewImage } from './engine/previewIm
 import { measureDrift, snapToOnset } from './engine/onsets';
 import {
   DEFAULT_SETTINGS,
+  frameSize,
   normalizeSettings,
+  type AspectRatio,
   type MediaItem,
   type ProjectSettings,
   type FitMode,
@@ -59,17 +62,23 @@ const AUDIO_BITRATE = 128_000;
  * 150ms 以上かかる。表示サイズと端末の性能から、必要なだけの大きさを選ぶ。
  * 書き出しは別の canvas を使うので、ここを下げても仕上がりの画質には影響しない。
  */
-function previewSizeFor(cssWidth: number): { width: number; height: number } {
+function previewSizeFor(
+  cssLongSide: number,
+  aspect: AspectRatio,
+): { width: number; height: number } {
   const cores = navigator.hardwareConcurrency ?? 4;
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  const wanted = cssWidth * dpr;
+  const wanted = cssLongSide * dpr;
 
-  let width = 1280;
-  if (wanted <= 720 || cores <= 4) width = 640;
-  else if (wanted <= 1100 || cores <= 6) width = 960;
+  // 長い辺で選ぶ（縦長でも横長と同じ画素数になる）
+  let longSide = 1280;
+  if (wanted <= 720 || cores <= 4) longSide = 640;
+  else if (wanted <= 1100 || cores <= 6) longSide = 960;
 
-  return { width, height: Math.round((width * 9) / 16) };
+  return frameSize(aspect, (longSide * 9) / 16);
 }
+
+const CONTAINER_EXTENSIONS: Record<ExportContainer, string> = { mp4: 'mp4', webm: 'webm' };
 
 export default function App() {
   const [photos, setPhotos] = useState<MediaItem[]>([]);
@@ -112,6 +121,8 @@ export default function App() {
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [quality, setQuality] = useState<QualityPreset>('standard');
   const [exportMode, setExportMode] = useState<ExportMode | null>(null);
+  // MP4 を作れず WebM で書き出したときの知らせ
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   // 曲と合わせるための道具（2 点で合わせる・クリック音）
   const [syncPoints, setSyncPoints] = useState<SyncPoints>({ a: null, b: null });
   const [clickMode, setClickMode] = useState<ClickMode>('off');
@@ -200,22 +211,29 @@ export default function App() {
     setSegments(applyOverrides(base, overrides, analysis, available));
   }, [analysis, photos, settings, overrides]);
 
-  // 表示サイズが変わったら、描画解像度を選び直す
+  // 表示サイズや画面の向きが変わったら、描画解像度を選び直す
+  const aspect = settings.aspect;
   useEffect(() => {
     const frame = stageFrameRef.current;
     if (!frame) return;
     const update = () => {
-      const cssWidth = frame.clientWidth || window.innerWidth;
+      // 縦長では枠の幅よりプレビューが細いので、実際に映っている大きさの長い辺で決める
+      const canvas = canvasRef.current;
+      const cssLongSide =
+        (canvas && Math.max(canvas.clientWidth, canvas.clientHeight)) ||
+        frame.clientWidth ||
+        window.innerWidth;
       setPreviewSize((current) => {
-        const next = previewSizeFor(cssWidth);
-        return next.width === current.width ? current : next;
+        const next = previewSizeFor(cssLongSide, aspect);
+        return next.width === current.width && next.height === current.height ? current : next;
       });
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(frame);
+    if (canvasRef.current) observer.observe(canvasRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [aspect]);
 
   const transitionSeconds = analysis
     ? (settings.transitionBeats * 60) / analysis.bpm
@@ -689,11 +707,13 @@ export default function App() {
     exportAbort.current = controller;
     setExportProgress(0);
     setError(null);
+    setExportNotice(null);
     try {
       const preset = QUALITY_PRESETS[quality];
-      const blob = await exportVideo(renderContext, audioFile, {
-        width: preset.width,
-        height: preset.height,
+      const { width, height } = frameSize(renderContext.settings.aspect, preset.shortSide);
+      const { blob, container } = await exportVideo(renderContext, audioFile, {
+        width,
+        height,
         fps: 30,
         videoBitsPerSecond: preset.videoBitsPerSecond,
         audioBitsPerSecond: AUDIO_BITRATE,
@@ -704,8 +724,14 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'slideshow.webm';
+      link.download = `slideshow.${CONTAINER_EXTENSIONS[container]}`;
       link.click();
+      if (container !== 'mp4') {
+        setExportNotice(
+          'このブラウザでは MP4 を作れないため、WebM で書き出しました。' +
+            'MP4 が必要なときは Chrome か Edge でお試しください。',
+        );
+      }
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (cause) {
       if (!(cause instanceof ExportAborted)) {
@@ -912,12 +938,19 @@ export default function App() {
         {/* 「このカットだけ」があるときは、PC ではプレビューの右横に置く */}
         <main className={`app__main${ready && selected ? ' app__main--cut' : ''}`}>
           <section className="panel panel--stage">
-            <div className="stage__frame" ref={stageFrameRef}>
+            <div
+              className={`stage__frame${
+                settings.aspect === 'portrait' ? ' stage__frame--portrait' : ''
+              }`}
+              ref={stageFrameRef}
+            >
             <canvas
               ref={canvasRef}
               width={previewSize.width}
               height={previewSize.height}
-              className={`stage${canPan ? ' stage--pannable' : ''}`}
+              className={`stage${canPan ? ' stage--pannable' : ''}${
+                settings.aspect === 'portrait' ? ' stage--portrait' : ''
+              }`}
               onPointerDown={beginPan}
               onPointerMove={movePan}
               onPointerUp={endPan}
@@ -1017,6 +1050,9 @@ export default function App() {
                 このブラウザでは画面を録画して書き出すため、曲の長さぶんの時間がかかります。
                 このタブを開いたままにしてください。
               </p>
+            )}
+            {exportNotice && exportProgress === null && (
+              <p className="muted">{exportNotice}</p>
             )}
             {exportProgress !== null && exportMode === 'offline' && (
               <p className="muted">
