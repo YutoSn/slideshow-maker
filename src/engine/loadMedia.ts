@@ -58,42 +58,86 @@ async function thumbnailFrom(image: CanvasImageSource, width: number, height: nu
 }
 
 /**
+ * iPhone の写真（HEIC / HEIF）かどうか。
+ * Windows では MIME が空になることがあるので、拡張子でも見る。
+ */
+export function isHeicFile(file: File): boolean {
+  return /^image\/hei[cf](-sequence)?$/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+}
+
+/** HEIC の変換は重いので、1 枚ずつ順番に流す */
+let heicQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * HEIC を JPEG に変換する。変換器（数 MB）は HEIC が来たときだけ読み込む。
+ * 変換に失敗したら null。
+ */
+function heicToJpeg(file: File): Promise<Blob | null> {
+  const run = heicQueue.then(async () => {
+    try {
+      const { heicTo } = await import('heic-to');
+      return await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
+    } catch {
+      return null;
+    }
+  });
+  heicQueue = run;
+  return run;
+}
+
+/** URL の画像を img に読み込む。表示できない形式なら null。 */
+function decodeImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+/**
  * 写真を読み込む。
  *
  * スマホの写真（1200 万画素など）をそのまま一覧に並べたりプレビューに描いたりすると、
  * 展開に時間がかかり、切り替わりのたびに画面が止まる。
  * 読み込み時に小さな画像とサムネイルを作っておき、元の画像は書き出しにだけ使う。
+ *
+ * HEIC は Safari ならそのまま表示できるので、まずはそのまま試し、
+ * 表示できなければ JPEG に変換してから読み込む。
  */
-function loadPhoto(file: File, url: string): Promise<MediaItem | null> {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => {
-      const width = image.naturalWidth;
-      const height = image.naturalHeight;
-      void (async () => {
-        const lowres = await shrinkPhoto(file, image, width, height, LOWRES_EDGE);
-        const thumbnail = await thumbnailFrom(lowres, width, height).catch(() => url);
-        resolve({
-          id: mediaIdFor(file),
-          name: file.name,
-          url,
-          kind: 'photo',
-          element: image,
-          width,
-          height,
-          duration: 0,
-          thumbnail,
-          lowres,
-        });
-      })();
-    };
-    // HEIC などブラウザが表示できない形式は静かに読み飛ばす
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    image.src = url;
-  });
+async function loadPhoto(file: File, url: string): Promise<MediaItem | null> {
+  let source: Blob = file;
+  let image = await decodeImage(url);
+  if (!image && isHeicFile(file)) {
+    URL.revokeObjectURL(url);
+    const jpeg = await heicToJpeg(file);
+    if (!jpeg) return null;
+    source = jpeg;
+    url = URL.createObjectURL(jpeg);
+    image = await decodeImage(url);
+  }
+  // ブラウザが表示できず、変換もできない形式は静かに読み飛ばす
+  if (!image) {
+    URL.revokeObjectURL(url);
+    return null;
+  }
+
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  const lowres = await shrinkPhoto(source, image, width, height, LOWRES_EDGE);
+  const thumbnail = await thumbnailFrom(lowres, width, height).catch(() => url);
+  return {
+    id: mediaIdFor(file),
+    name: file.name,
+    url,
+    kind: 'photo',
+    element: image,
+    width,
+    height,
+    duration: 0,
+    thumbnail,
+    lowres,
+  };
 }
 
 /** 動画の先頭付近から 1 コマ取り出して、一覧用の小さな画像にする。 */
@@ -171,11 +215,11 @@ function loadVideo(file: File, url: string): Promise<MediaItem | null> {
 export function loadMedia(file: File): Promise<MediaItem | null> {
   const url = URL.createObjectURL(file);
   if (file.type.startsWith('video/')) return loadVideo(file, url);
-  if (file.type.startsWith('image/')) return loadPhoto(file, url);
+  if (file.type.startsWith('image/') || isHeicFile(file)) return loadPhoto(file, url);
   URL.revokeObjectURL(url);
   return Promise.resolve(null);
 }
 
 export function isMediaFile(file: File): boolean {
-  return file.type.startsWith('image/') || file.type.startsWith('video/');
+  return file.type.startsWith('image/') || file.type.startsWith('video/') || isHeicFile(file);
 }
