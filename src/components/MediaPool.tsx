@@ -4,6 +4,8 @@ import { isMediaFile } from '../engine/loadMedia';
 
 interface Props {
   photos: MediaItem[];
+  /** 撮影日時順に並べて見せているか */
+  sortedByTaken: boolean;
   audioName: string | null;
   analyzing: boolean;
   /** タイムラインで使われている写真の ID */
@@ -20,8 +22,19 @@ interface Props {
   onDropCut: (cutIndex: number, mediaId: string) => void;
 }
 
+/** 撮影日時の表示（例: 2024/05/01 12:34） */
+function formatTaken(item: MediaItem): string {
+  const date = new Date(item.takenAt);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const text = `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+  return item.takenAtSource === 'metadata' ? `撮影 ${text}` : `ファイルの日付 ${text}（撮影日時の記録なし）`;
+}
+
 export default function MediaPool({
   photos,
+  sortedByTaken,
   audioName,
   analyzing,
   usedMediaIds,
@@ -42,6 +55,7 @@ export default function MediaPool({
   const visible = showUnusedOnly ? photos.filter((p) => !usedMediaIds.has(p.id)) : photos;
   const unusedCount = photos.filter((p) => !usedMediaIds.has(p.id)).length;
   const videoCount = photos.filter((p) => p.kind === 'video').length;
+  const undatedCount = photos.filter((p) => p.takenAtSource === 'file').length;
 
   return (
     <section className="panel">
@@ -119,6 +133,15 @@ export default function MediaPool({
             。写真とカットは、どちらの向きにドラッグしても差し替えられます。
           </p>
 
+          {sortedByTaken && (
+            <p className="hint">
+              撮影日時の古い順に並べています
+              {undatedCount > 0 &&
+                `（撮影日時の記録が無い ${undatedCount} 点は、ファイルの日付で並べています）`}
+              。素材にカーソルを合わせると日時が出ます。
+            </p>
+          )}
+
           {unusedCount > 0 && (
             <label className="field--inline field--tight">
               <input
@@ -173,11 +196,11 @@ export default function MediaPool({
                   <button
                     type="button"
                     className="tray__assign"
-                    title={
+                    title={`${
                       hasSelection
                         ? `${photo.name} を選択中のカットに割り当てる`
                         : `${photo.name}（カットを選ぶと割り当てられます）`
-                    }
+                    }\n${formatTaken(photo)}`}
                     onClick={() => onAssign(photo.id)}
                   >
                     <img src={photo.thumbnail} alt={photo.name} />

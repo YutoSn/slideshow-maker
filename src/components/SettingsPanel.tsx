@@ -4,6 +4,7 @@ import type {
   BackgroundKind,
   FitMode,
   LookFilter,
+  MediaOrder,
   ProjectSettings,
 } from '../engine/types';
 
@@ -34,6 +35,12 @@ function Overridden({ count }: { count: number }) {
 const ASPECT_LABELS: Record<AspectRatio, string> = {
   landscape: '横長 16:9（PC・テレビ・YouTube）',
   portrait: '縦長 9:16（スマホ・ショート・ストーリーズ）',
+};
+
+const ORDER_LABELS: Record<MediaOrder, string> = {
+  added: '入れた順',
+  taken: '撮影日時順（古い順）',
+  shuffle: 'シャッフル',
 };
 
 const BACKGROUND_LABELS: Record<BackgroundKind, string> = {
@@ -244,13 +251,18 @@ export default function SettingsPanel({
         </select>
       </label>
 
-      <label className="field field--inline">
-        <input
-          type="checkbox"
-          checked={settings.shuffle}
-          onChange={(e) => onChange({ shuffle: e.target.checked })}
-        />
-        <span>写真の順番をシャッフルする</span>
+      <label className="field">
+        <span>素材の並び順</span>
+        <select
+          value={settings.order}
+          onChange={(e) => onChange({ order: e.target.value as MediaOrder })}
+        >
+          {(Object.keys(ORDER_LABELS) as MediaOrder[]).map((order) => (
+            <option key={order} value={order}>
+              {ORDER_LABELS[order]}
+            </option>
+          ))}
+        </select>
       </label>
 
       {overrides.any > 0 && (

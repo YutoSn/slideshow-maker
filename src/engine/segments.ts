@@ -21,19 +21,28 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
+/** 撮影日時の古い順に並べた新しい配列を返す。同じ時刻なら入れた順のまま */
+export function sortByTaken(photos: MediaItem[]): MediaItem[] {
+  return photos
+    .map((photo, index) => ({ photo, index }))
+    .sort((a, b) => a.photo.takenAt - b.photo.takenAt || a.index - b.index)
+    .map(({ photo }) => photo);
+}
+
 /**
  * ビート格子に沿ってセグメントを組み立てる。
  * 写真が足りなければ先頭から巡回して曲の最後まで敷き詰める。
  */
 export function buildSegments(
-  photos: MediaItem[],
+  pool: MediaItem[],
   analysis: BeatAnalysis,
   settings: ProjectSettings,
 ): Segment[] {
-  if (photos.length === 0 || analysis.beats.length < 2) return [];
+  if (pool.length === 0 || analysis.beats.length < 2) return [];
 
+  const photos = settings.order === 'taken' ? sortByTaken(pool) : pool;
   const order = photos.map((_, i) => i);
-  if (settings.shuffle) {
+  if (settings.order === 'shuffle') {
     const random = seededRandom(20260818);
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));

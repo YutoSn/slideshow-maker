@@ -35,7 +35,7 @@ import { coverSlack, renderFrame, segmentAt, type PhotoFocus } from './engine/re
 import { isMediaFile, loadMedia, mediaIdFor } from './engine/loadMedia';
 import { emitPlayhead, onPlayhead } from './engine/playhead';
 import { pauseAllVideos, syncVideos } from './engine/videoSync';
-import { applyOverrides, buildSegments } from './engine/segments';
+import { applyOverrides, buildSegments, sortByTaken } from './engine/segments';
 import { alignToTwoPoints, rebuildGrid, shiftGrid, type GridAnchor } from './engine/beatGrid';
 import { startMetronome } from './engine/metronome';
 import { onPreviewReady, prefetchAround, previewImage } from './engine/previewImages';
@@ -148,6 +148,9 @@ export default function App() {
   const togglePlayRef = useRef<(() => void) | null>(null);
 
   const mediaMap = useMemo(() => new Map(photos.map((p) => [p.id, p])), [photos]);
+  // 撮影日時順のときは、素材プールもその順に見せる（カットへの当てはめと同じ順）
+  const byTaken = settings.order === 'taken';
+  const poolPhotos = useMemo(() => (byTaken ? sortByTaken(photos) : photos), [photos, byTaken]);
   const audioUrl = useMemo(() => (audioFile ? URL.createObjectURL(audioFile) : null), [audioFile]);
 
   useEffect(() => () => {
@@ -896,7 +899,8 @@ export default function App() {
           />
 
           <MediaPool
-            photos={photos}
+            photos={poolPhotos}
+            sortedByTaken={byTaken}
             audioName={audioFile?.name ?? null}
             analyzing={analyzing}
             usedMediaIds={usedMediaIds}

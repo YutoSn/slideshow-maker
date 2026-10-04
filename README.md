@@ -18,6 +18,7 @@
 - **画づくり** — Ken Burns、拍で弾む・揺れる、周辺減光、色味（モノクロ・セピア・鮮やか・暖かめ・涼しめ）
 - **写真プール** — 写真を貯めておき、任意のカットに当てはめる（クリック割り当て／ドラッグ＆ドロップ、未使用の写真を表示）
 - **並べ替え** — タイムライン上でカットを掴んで別の位置へ移す。プールの写真へ落として差し替えることもできる
+- **撮影日時順** — 素材の並び順を「入れた順／撮影日時順／シャッフル」から選べる。写真は EXIF、動画は記録された作成日時を読み、記録が無いものはファイルの日付で並べる
 - **表示位置の調整** — プレビューをドラッグして、写真のどこを見せるか写真ごとに決める
 - **収め方の選択** — 画面いっぱい（cover）／全体を収める（contain）を全体・カット単位で切り替え。余白の背景は ぼかし／黒／白／任意の色
 - **タイムライン編集** — 拡大・縮小して、カットごとに尺（拍数）とトランジションを個別調整
@@ -87,6 +88,22 @@ npm run dev     # 開かずにサーバーだけ起動
 
 BPM の推定が外れた場合は、UI から手動で補正できます。
 
+### 撮影日時（`src/engine/captureDate.ts`）
+
+「撮影日時順」で並べるため、読み込み時に素材ごとの撮影日時を読みます。ファイル全体は読まず、
+必要な部分だけを切り出して読むので、数百枚でも重くなりません。
+
+| 素材 | 読むもの |
+|---|---|
+| JPEG | EXIF の `DateTimeOriginal`（無ければ `DateTimeDigitized`・`DateTime`）。`OffsetTimeOriginal` があれば時差も反映し、無ければ端末の時刻帯とみなす。`SubSecTimeOriginal` で連写の順も保つ |
+| HEIC | 同じく EXIF。`Exif\0\0` の印を探して読む（後ろに置かれていても、最大 64MB まで探す）。JPEG へ変換する前の元ファイルから読む |
+| 動画 | iPhone の `com.apple.quicktime.creationdate` などのタグ（mediabunny で読む）、無ければ `moov > mvhd` の作成時刻（UTC） |
+| それ以外・記録なし | ファイルの更新日時（`lastModified`）で代用し、素材プールにその数を出す |
+
+並び順は全体設定の `order` に持ちます（以前の `shuffle: true` は `order: 'shuffle'` として開きます）。
+撮影日時順のときは、素材プールの表示とカットへの自動の当てはめを同じ順にします。
+個別に割り当てたカットは、並び順を変えてもそのままです。
+
 ### カット割りと手編集（`src/engine/segments.ts`）
 
 セグメントはビート格子から毎回組み直し、その上に**カット単位の手編集**
@@ -151,6 +168,7 @@ node scripts/e2e-video.mjs                  # 動画の同期・開始位置・�
 node scripts/e2e-legacy-project.mjs         # 古い版で保存したプロジェクトを開けるか確認
 node scripts/bench-mobile.mjs               # スマホ相当（CPU 4 倍遅い）でのフレーム時間を測る
 node scripts/e2e-export-video.mjs           # 書き出した動画の中で動画クリップが動いているか確認
+node scripts/e2e-capture-date.mjs           # 撮影日時の読み取りと、撮影日時順の並びを確認（ffmpeg を使う）
 node scripts/e2e-export-format.mjs          # 書き出しの形式（MP4／WebM）と、縦長・1080p の大きさを確認（ffprobe を使う）
 node scripts/make-demo-audio.mjs            # 確認用の短いクリック音源を生成
 node scripts/make-demo-video.mjs            # 動作確認用の動画クリップを生成

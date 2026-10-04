@@ -1,3 +1,5 @@
+import type { CaptureDateSource } from './captureDate';
+
 export type MediaKind = 'photo' | 'video';
 
 export interface MediaItem {
@@ -16,6 +18,10 @@ export interface MediaItem {
   duration: number;
   /** 一覧に出すサムネイル。動画は先頭付近のコマから作る */
   thumbnail: string;
+  /** 撮影日時（ミリ秒）。撮影日時順に並べるときに使う */
+  takenAt: number;
+  /** metadata: 写真・動画に記録された日時 / file: 記録が無くファイルの日付で代用した */
+  takenAtSource: CaptureDateSource;
   /**
    * 写真を小さく縮めたもの。プレビュー用の画像が間に合わないときの代役と、
    * ぼかし背景に使う（元の大きな画像を描くと重いため）
@@ -75,6 +81,14 @@ export function frameSize(aspect: AspectRatio, shortSide: number): { width: numb
     : { width: longSide, height: short };
 }
 
+/**
+ * 素材を自動でカットに当てはめるときの順番。
+ * added: 入れた順 / taken: 撮影日時の古い順 / shuffle: ランダム
+ */
+export type MediaOrder = 'added' | 'taken' | 'shuffle';
+
+const MEDIA_ORDERS: MediaOrder[] = ['added', 'taken', 'shuffle'];
+
 /** contain で余白ができたときの、背景の埋め方。 */
 export type BackgroundKind = 'black' | 'white' | 'blur' | 'color';
 
@@ -122,8 +136,8 @@ export interface ProjectSettings {
   background: BackgroundKind;
   /** background が 'color' のときに使う色 */
   backgroundColor: string;
-  /** 写真を並べ替えずに元の順で使うか */
-  shuffle: boolean;
+  /** 素材を当てはめる順番 */
+  order: MediaOrder;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -139,7 +153,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   fit: 'cover',
   background: 'blur',
   backgroundColor: '#101018',
-  shuffle: false,
+  order: 'added',
 };
 
 /**
@@ -154,7 +168,11 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
  * 数値は有限かどうかも確かめる。
  */
 export function normalizeSettings(stored: Partial<ProjectSettings> | null | undefined): ProjectSettings {
-  const merged = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+  // 以前は「シャッフルするか」だけを shuffle で持っていた
+  const { shuffle: legacyShuffle, ...rest } = (stored ?? {}) as Partial<ProjectSettings> & {
+    shuffle?: boolean;
+  };
+  const merged = { ...DEFAULT_SETTINGS, ...rest };
   const number = (value: unknown, fallback: number): number =>
     typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
@@ -172,7 +190,11 @@ export function normalizeSettings(stored: Partial<ProjectSettings> | null | unde
     background: merged.background ?? DEFAULT_SETTINGS.background,
     backgroundColor: merged.backgroundColor ?? DEFAULT_SETTINGS.backgroundColor,
     transition: merged.transition ?? DEFAULT_SETTINGS.transition,
-    shuffle: Boolean(merged.shuffle),
+    order: MEDIA_ORDERS.includes(rest.order as MediaOrder)
+      ? (rest.order as MediaOrder)
+      : legacyShuffle
+        ? 'shuffle'
+        : 'added',
   };
 }
 
